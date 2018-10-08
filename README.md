@@ -1,2 +1,2 @@
-# DFUOverUART-STM32
+# DFU-STM32
 USART bootloader command set implementation for the STM32 bootloader
