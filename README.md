@@ -1,2 +1,2 @@
 # DFU-STM32
-USART bootloader command set implementation for the STM32 bootloader
+USART/SPI bootloader command set implementation for the STM32 MCUs.
