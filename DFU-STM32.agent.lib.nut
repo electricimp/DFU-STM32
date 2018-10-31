@@ -1,5 +1,10 @@
 // DFU-STM32 agent library
 
+const EVENT_START_FLASHING = "start-flashing";
+const EVENT_REQUEST_CHUNK = "request-chunk";
+const EVENT_RECEIVE_CHUNK = "receive-chunk";
+const EVENT_DONE_FLASHING = "done-flashing";
+
 function getFileSize(uri) {
     // returns size of the remote file
     // TODO: error processing
@@ -93,87 +98,27 @@ class DFUSTM32Agent {
 
     static VERSION = "0.1.0";
 
-    blob = null;
+    chunks = null;
     maxFirmwareBlobSize = null;
     chunkSize = null;
-    status = null;
 
     constructor(maxBlobSize=32768) {
         // initialize agent
 
-        status = "Unknown";
         maxFirmwareBlobSize = maxBlobSize;
 
     };
 
-    function onRequest(query, response) {
-        // This method is a public interface of the library
+    function chunkGenerator(blob) {
+        server.log("Blob received by chunk generator.");
 
-        local responseCode = 200;
-        local responseBody = {"message": "OK"};
-
-        switch (query.method) {
-            case "GET":
-                // return state of the system: idle, writing, or finished
-                // writing firmware. In case of device support, this set
-                // of states can be extended
-                server.log("DFU-STM32 status: " + status);
-                responseBody.message = status;
-                break;
-            case "POST":
-                // request firmware update
-                server.log("Firmware update requested.");
-
-                // check if update is possible
-                if (status == "Busy") {
-                    responseCode = 400;
-                    responseBody.message = "Firmware update is in progress!";
-                    break;
-                };
-
-                // do the update
-                switch (query.headers["content-type"]) {
-                    case "application/json":
-                        // body contains a URI, that points to the firmware file,
-                        // and optional auth info
-                        local queryBody = http.jsondecode(query.body);
-                        if ("uri" in queryBody) {
-                            server.log("Firmware source: " + queryBody.uri);
-                        } else {
-                            responseCode = 400;
-                            responseBody.message = "Firmware location is not set!";
-                            break;
-                        };
-                        if ("username" in queryBody) {
-                            server.log("User name: " + queryBody.username);
-                        };
-                        if ("password" in queryBody) {
-                            server.log("Password is provided.");
-                        };
-                        // TODO: create an actual blob
-                        // TODO: start the update
-                        break;
-                    case "application/octet-stream":
-                        // body contains a firmware itself
-                        server.log("Firmware recieved.");
-                        // TODO: create an actual blob
-                        // TODO: start the update
-                        break;
-                    default:
-                        responseCode = 400;
-                        responseBody.message = "Unknown firmware delivery method!";
-                };
-                break;
-            default:
-                responseCode = 400;
-                responseBody.message = "Unknown operation";
-        };
-
-        response.header("Content-Type", "application/json");
-        response.send(responseCode, http.jsonencode(responseBody));
+        yield {"start": 100, "length": 100};
+        yield {"start": 200, "length": 100};
+        yield {"start": 300, "length": 42};
+        return null;
     };
 
-    function createBlob (uri) {
+    function createBlob(uri) {
         // takes firmware file from given URI and returns
         // blob or blob-like object
 
@@ -191,16 +136,36 @@ class DFUSTM32Agent {
         return result;
     };
 
-    function validateBlob (blob) {
+    function validateBlob(blob) {
         // check memory ranges or target MCU type/PnP ID,
         // maybe include custom callback
 
         // ...
     };
 
-    function sendBlob (blob) {
+    function sendBlob(blob) {
         // invoke generator to split firmware into chunks and
         // send it to device
+
+        chunks = chunkGenerator(blob);
+
+        device.on(EVENT_REQUEST_CHUNK, onRequestChunk.bindenv(this));
+        device.on(EVENT_DONE_FLASHING, onDoneFlashing.bindenv(this));
+
+        device.send(EVENT_START_FLASHING, null);
+
+    };
+
+    function onRequestChunk (_) {
+        // EVENT_REQUEST_CHUNK handler
+
+        device.send(EVENT_RECEIVE_CHUNK, resume chunks);
+    };
+
+    function onDoneFlashing (status) {
+        // EVENT_DONE_FLASHING handler
+        server.log("Flashing is done. Status: " + status);
+
     };
 
 }
