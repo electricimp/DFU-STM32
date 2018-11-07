@@ -14,21 +14,13 @@ class DFUSTM32Device {
 
     function init() {
         agent.on(EVENT_START_FLASHING, onStartFlashing.bindenv(this));
-    };
-
-    function onDisabledEvent(_) {
-        // handler for disabled events
-        server.log("This event is disabled.");
+        agent.on(EVENT_RECEIVE_CHUNK, onReceiveChunk.bindenv(this));
     };
 
     function onStartFlashing(_) {
         // EVENT_START_FLASHING handler
 
         invokeBootloader();
-
-        agent.on(EVENT_RECEIVE_CHUNK, onReceiveChunk.bindenv(this));
-        agent.on(EVENT_START_FLASHING, onDisabledEvent);
-
         agent.send(EVENT_REQUEST_CHUNK, null);
     };
 
@@ -47,9 +39,7 @@ class DFUSTM32Device {
             writeChunk(chunk);
             agent.send(EVENT_REQUEST_CHUNK, null);
         } else {
-            agent.on(EVENT_RECEIVE_CHUNK, onDisabledEvent);
             dismissBootloader();
-            agent.on(EVENT_START_FLASHING, onStartFlashing.bindenv(this));
 
             // TODO: "OK" → try to make sure that MCU is up
             // and running in normal mode
@@ -60,7 +50,10 @@ class DFUSTM32Device {
 
     function writeChunk(chunk) {
         // write chunk
-        server.log("Chunk " + chunk.start + ":" + chunk.length + " is written.");
+        server.log(
+            "Chunk " + chunk.start + ":" +
+            chunk.data.len() + " is written."
+        );
     };
 
     function dismissBootloader() {
