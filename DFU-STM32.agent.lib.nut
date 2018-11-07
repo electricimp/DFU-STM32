@@ -222,13 +222,13 @@ class DFUSTM32Agent {
         device.send(EVENT_START_FLASHING, null);
     };
 
-    function onRequestChunk (_) {
+    function onRequestChunk(_) {
         // EVENT_REQUEST_CHUNK handler
 
         device.send(EVENT_RECEIVE_CHUNK, resume _chunks);
     };
 
-    function onDoneFlashing (status) {
+    function onDoneFlashing(status) {
         // EVENT_DONE_FLASHING handler
 
         server.log("Flashing is done. Status: " + status);
