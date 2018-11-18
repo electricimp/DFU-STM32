@@ -1,22 +1,8 @@
-const EVENT_START_FLASHING = "start-flashing";
-const EVENT_REQUEST_CHUNK = "request-chunk";
-const EVENT_RECEIVE_CHUNK = "receive-chunk";
-const EVENT_DONE_FLASHING = "done-flashing";
+// DFU-STM32 device library
 
 class STM32SPIPort {
     // Implements STM32 bootloader access (initialization
     // and commands issuing) via SPI.
-
-    static spiSync = 0x5a;       // 90
-    static spiPreSync = 0xa5;    // 165
-    static spiDummy = 0x00;      // 0
-    static spiAck = 0x79;        // 121
-    static spiNoAck = 0x1f;      // 31
-
-    static spiCmdGetVersion = 0x01;
-
-    static spiWaitForAck = 10000;
-    static spiDefaultDataRate = 117.1875;
 
     _spiPort = null;
     _spiDataRate = null;
@@ -31,10 +17,24 @@ class STM32SPIPort {
         // ⋅ spiSelectPin − GPIO pin used to select remote (slave) port
         //   (can be null if MCU's slave select pin is hardwired).
 
+        // bootloader protocol-related constants
+        const SPI_SYNC = 0x5a;
+        const SPI_PRESYNC = 0xa5;
+        const SPI_DUMMY = 0x00;
+        const SPI_ACK = 0x79;
+        const SPI_NO_ACK = 0x1f;
+
+        // SPI configuration
+        const SPI_WAIT_FOR_ACK = 10000;
+        const SPI_DEFAULT_DATA_RATE = 117.1875;
+
+        // bootloader commands
+        const SPI_CMD_GET_VERSION = 0x01;
+
         _spiPort = spiPort;
         _spiSelectPin = spiSelectPin;
         if (spiDataRate == null) {
-                _spiDataRate = spiDefaultDataRate;
+                _spiDataRate = SPI_DEFAULT_DATA_RATE;
             } else {
                 _spiDataRate = spiDataRate;
             };
@@ -46,7 +46,7 @@ class STM32SPIPort {
         // from/to SPI port.
 
         if (data == null) {
-            data = spiDummy;
+            data = SPI_DUMMY;
         };
         _send[0] = data;
         local recv = _spiPort.writeread(_send);
@@ -59,12 +59,12 @@ class STM32SPIPort {
 
         local recv = null;
 
-        for (local i=spiWaitForAck; i-= 1; i > 0) {
+        for (local i=SPI_WAIT_FOR_ACK; i-= 1; i > 0) {
             recv = _writeReadByte();
-            if (recv == spiAck) {
+            if (recv == SPI_ACK) {
                 return;
             };
-            if (recv == spiNoAck) {
+            if (recv == SPI_NO_ACK) {
                 throw "Connection is not acknowledged!";
             };
         };
@@ -77,7 +77,7 @@ class STM32SPIPort {
 
         local cmdFrame = blob(3);
 
-        cmdFrame[0] = spiSync;
+        cmdFrame[0] = SPI_SYNC;
         cmdFrame[1] = cmd;
         cmdFrame[2] = cmd ^ 0xff;
 
@@ -108,20 +108,32 @@ class STM32SPIPort {
         _spiPort.configure(MSB_FIRST | CLOCK_IDLE_LOW, _spiDataRate);
 
         // synchronization according to AN4286
-        if (_writeReadByte(spiSync) != spiPreSync) {
+        if (_writeReadByte(SPI_SYNC) != SPI_PRESYNC) {
             throw "Can not sync with bootloader!";
         };
 
         _ack();
-        _writeReadByte(spiAck);
+        _writeReadByte(SPI_ACK);
 
         // read bootloader version
-        _sendCommand(spiCmdGetVersion);
+        _sendCommand(SPI_CMD_GET_VERSION);
         _ack();
         local version = _writeReadByte().tostring();
         version = version.slice(0, -1) + "." + version.slice(-1);
         server.log("Bootloader version: " + version);
         _ack();
+    };
+
+    function erase(sector) {
+        // Erases a single sector (or block) of MCU's internal
+        // Flash ROM.
+
+    };
+
+    function write(address, data) {
+        // Writes the data (array of bytes) into MCU's memory,
+        // starting with address given.
+
     };
 
     function disconnect() {
@@ -156,6 +168,11 @@ class DFUSTM32Device {
         // Constructor parameters:
         // -----------------------
         // ⋅ port − DFU port object.
+
+        const EVENT_START_FLASHING = "start-flashing";
+        const EVENT_REQUEST_CHUNK = "request-chunk";
+        const EVENT_RECEIVE_CHUNK = "receive-chunk";
+        const EVENT_DONE_FLASHING = "done-flashing";
 
         _port = port;
 

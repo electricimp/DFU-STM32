@@ -1,41 +1,65 @@
 // DFU-STM32 agent library
 
 class IntelHexParser {
+    // Splits blob-like object, containing a file
+    // of Intel Hex format, into chunks.
 
-    static RECORD_TYPE_DATA = "00";     // Data Record
-    static RECORD_TYPE_EOF = "01";      // End of File Record
-    static RECORD_TYPE_ULBA = "04";     // Extended Linear Address Record
-    static RECORD_TYPE_START = "05";    // Start Linear Address Record
-
-    parseErrorMsg = "Intel Hex Parse Error: ";
     _chunkSize = null;
     _fileBlob = null;
-    spacingChars = null;
 
     constructor(fileBlob, chunkSize=4096) {
-        _chunkSize = chunkSize;
+        // Constructor parameters:
+        // -----------------------
+        // ⋅ fileBlob − blob or blob-like object with a firmware file,
+        // ⋅ chunkSize − (optional) size of a resulting chunk (bytes).
+        //   Defaults to DEFAULT_CHUNK_SIZE.
+
+        const PARSE_ERROR_MSG = "Intel Hex Parse Error: ";
+
+        // Intel Hex file format-related constants:
+
+        // - record types, that can be used in storing ARM MCU firmware
+        const RECORD_TYPE_DATA = "00";     // Data Record
+        const RECORD_TYPE_EOF = "01";      // End of File Record
+        const RECORD_TYPE_ULBA = "04";     // Extended Linear Address Record
+        const RECORD_TYPE_START = "05";    // Start Linear Address Record
+
+        // - record delimiters
+        const SPACING_CHARS = " \t\r\n";
+
+        const DEFAULT_CHUNK_SIZE = 4096;
+
+        if (chunkSize == null) {
+            _chunkSize = DEFAULT_CHUNK_SIZE;
+        } else {
+            _chunkSize = chunkSize;
+        };
         _fileBlob = fileBlob;
-        spacingChars = " \t\r\n";
     };
 
-    function hexToInt(str) {
-        // Parses a hex string and turns it into an integer.
+    function _hexToInt(str) {
+        // Converts a string of hexadecimal digits to an integer.
 
-        local hex = 0x0000;
+        local hex = 0;
 
         foreach (ch in str) {
             local nibble;
+
             if (ch >= '0' && ch <= '9') {
                 nibble = (ch - '0');
-            } else {
+            } else if (ch >= 'A' && ch <= 'F') {
                 nibble = (ch - 'A' + 10);
-            }
+            } else if (ch >= 'a' && ch <= 'f') {
+                nibble = (ch - 'a' + 10);
+            } else {
+                throw PARSE_ERROR_MSG + "hex digit is out of range";
+            };
             hex = (hex << 4) + nibble;
         }
         return hex;
     };
 
-    function parseRecord() {
+    function _parseRecord() {
         // Parse Intel Hex record and return its type and contents. Move the
         // blob's pointer to the next record.
 
@@ -43,21 +67,21 @@ class IntelHexParser {
         local recordMark = null;
         do {
             recordMark = _fileBlob.readstring(1);
-        } while (spacingChars.find(recordMark));
+        } while (SPACING_CHARS.find(recordMark));
 
         if (recordMark != ":") {
-            throw parseErrorMsg + "Record mark is invalid: " + recordMark;
+            throw PARSE_ERROR_MSG + "record mark is invalid: " + recordMark;
         };
 
-        local recordLength = hexToInt(_fileBlob.readstring(2));
-        local loadOffset = hexToInt(_fileBlob.readstring(4));
+        local recordLength = _hexToInt(_fileBlob.readstring(2));
+        local loadOffset = _hexToInt(_fileBlob.readstring(4));
         local recordType = _fileBlob.readstring(2);
 
         // save data position in blob and skip data by now
         local dataPointer = _fileBlob.tell();
         _fileBlob.seek(recordLength * 2, 'c');
 
-        local checkSum = hexToInt(_fileBlob.readstring(2));
+        local checkSum = _hexToInt(_fileBlob.readstring(2));
         local result = {
             "type": recordType,
             "offset": loadOffset,
@@ -69,7 +93,7 @@ class IntelHexParser {
                 // extended linear address record (ULBA)
                 local tempPointer = _fileBlob.tell();
                 _fileBlob.seek(dataPointer);
-                result.data = hexToInt(_fileBlob.readstring(recordLength * 2));
+                result.data = _hexToInt(_fileBlob.readstring(recordLength * 2));
                 _fileBlob.seek(tempPointer);
                 break;
 
@@ -79,7 +103,7 @@ class IntelHexParser {
                 _fileBlob.seek(dataPointer);
                 result.data = [];
                 for (local i = 0; i < recordLength; i += 1) {
-                    result.data.append(hexToInt(_fileBlob.readstring(2)));
+                    result.data.append(_hexToInt(_fileBlob.readstring(2)));
                 };
                 _fileBlob.seek(tempPointer);
                 break;
@@ -97,7 +121,7 @@ class IntelHexParser {
         local chunkOffset = null;
 
         while (true) {
-            local record = parseRecord();
+            local record = _parseRecord();
 
             switch (record.type) {
                 case RECORD_TYPE_ULBA:
@@ -184,17 +208,17 @@ class DFUSTM32Agent {
 
     static VERSION = "0.1.0";
 
-    static EVENT_START_FLASHING = "start-flashing";
-    static EVENT_REQUEST_CHUNK = "request-chunk";
-    static EVENT_RECEIVE_CHUNK = "receive-chunk";
-    static EVENT_DONE_FLASHING = "done-flashing";
-
     _blobParser = null;
     _chunks = null;
     _maxBlobSize = null;
 
     constructor(maxBlobSize=32768) {
         // initialize agent
+
+        const EVENT_START_FLASHING = "start-flashing";
+        const EVENT_REQUEST_CHUNK = "request-chunk";
+        const EVENT_RECEIVE_CHUNK = "receive-chunk";
+        const EVENT_DONE_FLASHING = "done-flashing";
 
         _maxBlobSize = maxBlobSize;
 
@@ -217,7 +241,7 @@ class DFUSTM32Agent {
         // invoke generator to split firmware into chunks and
         // send it to device
 
-        _blobParser = IntelHexParser(blob, 1024);
+        _blobParser = IntelHexParser(blob);
         _chunks = _blobParser.generateChunks();
         device.send(EVENT_START_FLASHING, null);
     };
