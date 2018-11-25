@@ -30,6 +30,10 @@ class STM32SPIPort {
 
         // bootloader commands
         const SPI_CMD_GET_VERSION = 0x01;
+        const SPI_CMD_UNPROTECT = 0x73;
+        const SPI_CMD_ERASE = 0x43;
+        const SPI_CMD_EXT_ERASE = 0x44;
+        const SPI_CMD_WRITE = 0x31;
 
         _spiPort = spiPort;
         _spiSelectPin = spiSelectPin;
@@ -38,6 +42,7 @@ class STM32SPIPort {
             } else {
                 _spiDataRate = spiDataRate;
             };
+        // temporary structure for the data byte being send
         _send = blob(1);
     };
 
@@ -124,10 +129,62 @@ class STM32SPIPort {
         _ack();
     };
 
-    function erase(sector) {
-        // Erases a single sector (or block) of MCU's internal
-        // Flash ROM.
+    function unprotect() {
+        //
 
+        server.log("Disabling Flash memory write protection");
+
+        _sendCommand(SPI_CMD_UNPROTECT);
+        _ack();
+        _ack();
+    };
+
+    function erase(sector) {
+        //
+
+        server.log("Erasing sector " + sector);
+
+        _sendCommand(SPI_CMD_ERASE);
+        _ack();
+
+        local sectorFrame = blob(3);
+        
+        sectorFrame[0] = 0;
+        sectorFrame[1] = sector & 0xff;
+        sectorFrame[2] = sectorFrame[0] ^ sectorFrame[1];
+        _spiPort.write(sectorFrame);
+        _ack();
+
+    };
+
+    function extErase(sector) {
+        // Erases a single sector (or block, or page)
+        // of the MCU's internal Flash ROM. Since our protocol
+        // is of streaming nature, we can hardly make use
+        // of multi-sector erasing or mass erasing.
+
+        server.log("Erasing sector " + sector);
+
+        _sendCommand(SPI_CMD_EXT_ERASE);
+        _ack();
+
+        local sectorFrame = blob(3);
+
+        // erase N+1 sector, where N=0
+        sectorFrame[0] = 0;
+        sectorFrame[1] = 1;
+        sectorFrame[2] = 1;
+        sectorFrame.seek(0);
+        _spiPort.write(sectorFrame);
+        _ack();
+
+        // sector to erase, MSB first
+        sectorFrame[0] = sector >> 8;
+        sectorFrame[1] = sector && 0xff;
+        sectorFrame[2] = sectorFrame[0] ^ sectorFrame[1];
+        sectorFrame.seek(0);
+        _spiPort.write(sectorFrame);
+        _ack();
     };
 
     function write(address, data) {
@@ -140,7 +197,7 @@ class STM32SPIPort {
         // Deselects SPI port.
 
         if (_spiSelectPin != null) {
-            _spiSelectPin.write(0);
+            _spiSelectPin.write(1);
         };
     };
 
@@ -219,6 +276,9 @@ class DFUSTM32Device {
         _port.connect();
 
         server.log("Bootloader is on.");
+
+        imp.sleep(1);
+
     };
 
     function onReceiveChunk(chunk) {
