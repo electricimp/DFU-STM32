@@ -3,7 +3,7 @@
 
 class STM32USARTPort {
     // Implements STM32 bootloader access (initialization
-    // and commands issuing) via SPI.
+    // and commands issuing) via USART.
 
     _usartPort = null;
     _usartDataRate = null;
@@ -18,6 +18,7 @@ class STM32USARTPort {
         const USART_CMD_GET_VERSION = 0x01;
         const USART_CMD_ERASE = 0x43;
         const USART_CMD_EXT_ERASE = 0x44;
+        const USART_CMD_WRITE = 0x31;
 
         const USART_DEFAULT_DATA_RATE = 115200;
         const USART_POLL_INTERVAL = 0.01
@@ -35,14 +36,25 @@ class STM32USARTPort {
 
     };
 
-    function sendByte(dataByte) {
+    function _xorChecksum(data) {
+        // Calculates xor checksum for a data blob.
+
+        local checksum = 0;
+
+        foreach (_, dataByte in data) {
+            checksum = checksum ^ dataByte;
+        };
+        return checksum;
+    };
+
+    function _sendByte(dataByte) {
         // Write byte of data synchronously.
 
         _send[0] = dataByte;
         _usartPort.write(_send);
     };
 
-    function sendCommand(command) {
+    function _sendCommand(command) {
         local commandBlob = blob(2);
 
         commandBlob[0] = command;
@@ -50,7 +62,7 @@ class STM32USARTPort {
         _usartPort.write(commandBlob);
     };
 
-    function readByte() {
+    function _readByte() {
         // Read data byte with polling.
 
         local reply;
@@ -66,10 +78,10 @@ class STM32USARTPort {
         throw "Reading from USART timed out!";
     };
 
-    function ack() {
+    function _ack() {
         // Acknowledge the sent packet.
 
-        local reply = readByte();
+        local reply = _readByte();
 
         switch (reply) {
             case USART_ACK:
@@ -90,51 +102,81 @@ class STM32USARTPort {
 
         local reply = -1;
 
-        sendByte(USART_SYNC);
-        ack();
+        _sendByte(USART_SYNC);
+        _ack();
 
-        sendCommand(USART_CMD_GET_VERSION);
-        ack();
+        _sendCommand(USART_CMD_GET_VERSION);
+        _ack();
 
         local reply = blob(3);
 
         foreach (i, _ in reply) {
-            reply[i] = readByte();
+            reply[i] = _readByte();
         };
 
         local version = reply[0].tostring();
         version = version.slice(0, -1) + "." + version.slice(-1);
         server.log("Bootloader version: " + version);
 
-        ack();
+        _ack();
     };
 
     function extErase(sector) {
-        //
+        // Erases a single sector (or block, or page)
+        // of the MCU's internal Flash ROM. Since our protocol
+        // is of streaming nature, we can hardly make use
+        // of multi-sector erasing or mass erasing.
 
-        sendCommand(USART_CMD_EXT_ERASE);
-        ack();
+        _sendCommand(USART_CMD_EXT_ERASE);
+        _ack();
 
         // erase one sector
-        sendByte(0);
-        sendByte(0);
+        _sendByte(0);
+        _sendByte(0);
 
         // send sector number
         local sectorMSB = sector >> 8;
         local sectorLSB = sector & 0xff;
 
-        sendByte(sectorMSB);
-        sendByte(sectorLSB);
-        sendByte(sectorMSB ^ sectorLSB);
+        _sendByte(sectorMSB);
+        _sendByte(sectorLSB);
+        _sendByte(sectorMSB ^ sectorLSB);
+        _ack();
+    };
 
-        server.log(format(
-            "0x%02x 0x%02x 0x%02x",
-            sectorMSB,
-            sectorLSB,
-            sectorMSB ^ sectorLSB
-        ));
+    function write256(address, dataBlob) {
+        // Writes up to 256 bytes into MCU's memory
+        // (straightforward implementation of the bootloader's
+        // Write Memory command).
 
-        ack();
+        local dataSize = dataBlob.len();
+        if (dataSize <= 0 || dataSize > 256) {
+            throw "Can not write so much as " + dataSize + " bytes in one go.";
+        };
+
+        _sendCommand(SPI_CMD_WRITE);
+        _ack();
+
+        // prepare big-endian buffer with address bytes
+        local addressBlob = blob(4);
+        for (local i = 3; i -= 1; i >= 0) {
+            addressBlob[i] = address & 0xff;
+            address = address >> 8;
+        };
+        
+        _usartPort.write(addressBlob);
+        _writeByte(_xorChecksum(addressBlob));
+        _ack();
+
+        _writeByte(dataSize - 1);
+        _usartPort.write(dataBlob);
+
+        // Some products may return two NACKs instead of one when Read
+        // Protection (RDP) is active (or Read Potection level 1 is active).
+        // To know if a given product returns a single NACK or two NACKs
+        // in this situation, refer to the known limitations section
+        // relative to that product in AN2606.
+        _ack();
 
     };
 
