@@ -1,5 +1,150 @@
 // DFU-STM32 device library
 
+
+class STM32USARTPort {
+    // Implements STM32 bootloader access (initialization
+    // and commands issuing) via SPI.
+
+    _usartPort = null;
+    _usartDataRate = null;
+    _send = null;
+
+    constructor(usartPort, usartDataRate=null) {
+
+        const USART_SYNC = 0x7f;
+        const USART_ACK = 0x79;
+        const USART_NO_ACK = 0x1f;
+
+        const USART_CMD_GET_VERSION = 0x01;
+        const USART_CMD_ERASE = 0x43;
+        const USART_CMD_EXT_ERASE = 0x44;
+
+        const USART_DEFAULT_DATA_RATE = 115200;
+        const USART_POLL_INTERVAL = 0.01
+        const USART_POLL_RETRIES = 500
+
+        _usartPort = usartPort;
+        _send = blob(1);
+
+
+        if (usartDataRate == null) {
+            _usartDataRate = USART_DEFAULT_DATA_RATE;
+        } else {
+            _usartDataRate = usartDataRate;
+        };
+
+    };
+
+    function sendByte(dataByte) {
+        // Write byte of data synchronously.
+
+        _send[0] = dataByte;
+        _usartPort.write(_send);
+    };
+
+    function sendCommand(command) {
+        local commandBlob = blob(2);
+
+        commandBlob[0] = command;
+        commandBlob[1] = command ^ 0xff;
+        _usartPort.write(commandBlob);
+    };
+
+    function readByte() {
+        // Read data byte with polling.
+
+        local reply;
+
+        for (local i = 0; i < USART_POLL_RETRIES; i += 1) {
+            reply = _usartPort.read();
+            if (reply != -1) {
+                return reply;
+            };
+            imp.sleep(USART_POLL_INTERVAL);
+        };
+
+        throw "Reading from USART timed out!";
+    };
+
+    function ack() {
+        // Acknowledge the sent packet.
+
+        local reply = readByte();
+
+        switch (reply) {
+            case USART_ACK:
+                server.log("Acknowledged!");
+                break;
+
+            case USART_NO_ACK:
+                throw "Not acknowledged!";
+
+            default:
+                throw format("Unexpected data: 0x%02x", reply);
+        };
+    };
+
+    function connect() {
+
+        _usartPort.configure(_usartDataRate, 8, PARITY_EVEN, 1, NO_CTSRTS);
+
+        local reply = -1;
+
+        sendByte(USART_SYNC);
+        ack();
+
+        sendCommand(USART_CMD_GET_VERSION);
+        ack();
+
+        local reply = blob(3);
+
+        foreach (i, _ in reply) {
+            reply[i] = readByte();
+        };
+
+        local version = reply[0].tostring();
+        version = version.slice(0, -1) + "." + version.slice(-1);
+        server.log("Bootloader version: " + version);
+
+        ack();
+    };
+
+    function extErase(sector) {
+        //
+
+        sendCommand(USART_CMD_EXT_ERASE);
+        ack();
+
+        // erase one sector
+        sendByte(0);
+        sendByte(0);
+
+        // send sector number
+        local sectorMSB = sector >> 8;
+        local sectorLSB = sector & 0xff;
+
+        sendByte(sectorMSB);
+        sendByte(sectorLSB);
+        sendByte(sectorMSB ^ sectorLSB);
+
+        server.log(format(
+            "0x%02x 0x%02x 0x%02x",
+            sectorMSB,
+            sectorLSB,
+            sectorMSB ^ sectorLSB
+        ));
+
+        ack();
+
+    };
+
+    function disconnect() {
+        //
+
+    };
+
+}
+
 class STM32SPIPort {
     // Implements STM32 bootloader access (initialization
     // and commands issuing) via SPI.
@@ -86,6 +231,10 @@ class STM32SPIPort {
         cmdFrame[1] = cmd;
         cmdFrame[2] = cmd ^ 0xff;
 
+        server.log("Command frame sent: " + format(
+            "0x%x 0x%x 0x%x", cmdFrame[0], cmdFrame[1], cmdFrame[2]
+        ));
+
         _spiPort.write(cmdFrame);
     };
 
@@ -152,6 +301,7 @@ class STM32SPIPort {
         sectorFrame[0] = 0;
         sectorFrame[1] = sector & 0xff;
         sectorFrame[2] = sectorFrame[0] ^ sectorFrame[1];
+
         _spiPort.write(sectorFrame);
         _ack();
 
@@ -172,8 +322,8 @@ class STM32SPIPort {
 
         // erase N+1 sector, where N=0
         sectorFrame[0] = 0;
-        sectorFrame[1] = 1;
-        sectorFrame[2] = 1;
+        sectorFrame[1] = 0;
+        sectorFrame[2] = 0;
         sectorFrame.seek(0);
         _spiPort.write(sectorFrame);
         _ack();
@@ -185,6 +335,25 @@ class STM32SPIPort {
         sectorFrame.seek(0);
         _spiPort.write(sectorFrame);
         _ack();
+    };
+
+    function fullErase() {
+
+        server.log("Erasing Flash");
+
+        _sendCommand(SPI_CMD_EXT_ERASE);
+        _ack();
+
+        local sectorFrame = blob(3);
+
+        // special erase
+        sectorFrame[0] = 0xff;
+        sectorFrame[1] = 0xff;
+        sectorFrame[2] = 0x00;
+        sectorFrame.seek(0);
+        _spiPort.write(sectorFrame);
+        _ack();
+
     };
 
     function write(address, data) {
@@ -201,15 +370,6 @@ class STM32SPIPort {
         };
     };
 
-}
-
-class STM32USARTPort {
-    // Implements STM32 bootloader access (initialization
-    // and commands issuing) via SPI.
-
-    constructor() {
-        throw "USART is not yet implemented!"
-    };
 }
 
 class DFUSTM32Device {
@@ -274,6 +434,8 @@ class DFUSTM32Device {
         imp.sleep(1);
 
         _port.connect();
+
+        _port.extErase(10);
 
         server.log("Bootloader is on.");
 
