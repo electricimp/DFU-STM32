@@ -101,9 +101,9 @@ class IntelHexParser {
                 // data record
                 local tempPointer = _fileBlob.tell();
                 _fileBlob.seek(dataPointer);
-                result.data = [];
+                result.data = blob(recordLength);
                 for (local i = 0; i < recordLength; i += 1) {
-                    result.data.append(_hexToInt(_fileBlob.readstring(2)));
+                    result.data[i] = _hexToInt(_fileBlob.readstring(2));
                 };
                 _fileBlob.seek(tempPointer);
                 break;
@@ -117,7 +117,7 @@ class IntelHexParser {
         // if needed). Returns chunk or null.
 
         local ulba = 0;
-        local data = [];
+        local data = blob();
         local chunkOffset = null;
 
         while (true) {
@@ -126,7 +126,10 @@ class IntelHexParser {
             switch (record.type) {
                 case RECORD_TYPE_ULBA:
                     // ULBA should precede data
-                    server.log("Firmware start address is " + record.data);
+                    server.log(format(
+                        "Firmware start address is 0x%04x0000",
+                        record.data
+                    ));
                     ulba = record.data << 16;
                     break;
 
@@ -147,31 +150,39 @@ class IntelHexParser {
                             chunkOffset = record.offset;
                             yield chunk;
                         };
-
                     } else {
                         if (data.len() >= _chunkSize) {
                             // chunk data is ready
 
-                            // flush up to _chunkSize bytes of data, save
-                            // the rest
+                            // flush up to _chunkSize bytes of data
                             local divider = data.len();
+
                             if (divider > _chunkSize) {
                                 divider = _chunkSize;
                             };
 
+                            data.seek(0);
                             local chunk = {
                                 "start": ulba + chunkOffset,
-                                "data": data.slice(0, divider)
+                                "data": data.readblob(divider)
                             };
-                            data = data.slice(divider);
-                            data.extend(record.data);
+
+                            // and save the rest
+                            if (data.eos()) {
+                                data = blob();
+                            } else {
+                                data = data.readblob(data.len());
+                            };
+
+                            // append record to buffer
+                            data.seek(0, 'e');
+                            data.writeblob(record.data);
+
                             // correct chunk offset for the saved data
-                            chunkOffset = (
-                                record.offset - data.len() + record.data.len()
-                            );
+                            chunkOffset += divider;
                             yield chunk;
                         } else {
-                            data.extend(record.data);
+                            data.writeblob(record.data);
                         };
                     };
                     break;

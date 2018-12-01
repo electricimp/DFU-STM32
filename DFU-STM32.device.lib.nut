@@ -8,8 +8,25 @@ class STM32USARTPort {
     _usartPort = null;
     _usartDataRate = null;
     _send = null;
+    _extendedErase = null;
+    _doubleAckOnWrite = null;
 
-    constructor(usartPort, usartDataRate=null) {
+    constructor(
+        usartPort,
+        usartDataRate=null,
+        extendedErase=true,
+        doubleAckOnWrite=false
+    ) {
+        // Constructor parameters:
+        // -----------------------
+        // ⋅ usartPort − Imp device serial port;
+        // ⋅ usartDataRate − serial communication baud rate (int),
+        //   1200 to 115200;
+        // ⋅ extendedErase − MCU's bootloader uses extended Erase
+        //   command (true, default) or short Erase commands
+        //   (false);
+        // ⋅ doubleAckOnWrite − bootloader expects two acknoledge
+        //   sequences on write (true) or just one (false, default).
 
         const USART_SYNC = 0x7f;
         const USART_ACK = 0x79;
@@ -25,8 +42,8 @@ class STM32USARTPort {
         const USART_POLL_RETRIES = 500
 
         _usartPort = usartPort;
-        _send = blob(1);
-
+        _extendedErase = extendedErase;
+        _doubleAckOnWrite = doubleAckOnWrite;
 
         if (usartDataRate == null) {
             _usartDataRate = USART_DEFAULT_DATA_RATE;
@@ -34,6 +51,7 @@ class STM32USARTPort {
             _usartDataRate = usartDataRate;
         };
 
+        _send = blob(1);
     };
 
     function _xorChecksum(data) {
@@ -55,6 +73,8 @@ class STM32USARTPort {
     };
 
     function _sendCommand(command) {
+        // Write command byte, followed by XOR checksum.
+
         local commandBlob = blob(2);
 
         commandBlob[0] = command;
@@ -97,6 +117,7 @@ class STM32USARTPort {
     };
 
     function connect() {
+        // Connects to the MCU's bootloader via serial port.
 
         _usartPort.configure(_usartDataRate, 8, PARITY_EVEN, 1, NO_CTSRTS);
 
@@ -121,11 +142,27 @@ class STM32USARTPort {
         _ack();
     };
 
-    function extErase(sector) {
-        // Erases a single sector (or block, or page)
-        // of the MCU's internal Flash ROM. Since our protocol
-        // is of streaming nature, we can hardly make use
-        // of multi-sector erasing or mass erasing.
+    function _erase(sector) {
+        // Short erase implementation.
+        
+        _sendCommand(USART_CMD_ERASE);
+        _ack();
+
+        sector = sector & 0xff;
+
+        // erase one sector
+        _sendByte(0);
+
+        // send sector number
+        _sendByte(sector);
+
+        // send checksum
+        _sendByte(sector);
+        _ack();
+    };
+
+    function _extErase(sector) {
+        // Extended erase implementation.
 
         _sendCommand(USART_CMD_EXT_ERASE);
         _ack();
@@ -140,11 +177,26 @@ class STM32USARTPort {
 
         _sendByte(sectorMSB);
         _sendByte(sectorLSB);
+
+        // send checksum
         _sendByte(sectorMSB ^ sectorLSB);
         _ack();
     };
 
-    function write256(address, dataBlob) {
+    function erase(sector) {
+        // Selects proper method of erasing a sector of the MCU's
+        // internal Flash ROM. Since our protocol is of streaming
+        // nature, we can hardly make use of multi-sector erasing
+        // or mass erasing.
+
+        if (_extendedErase) {
+            _extErase(sector);
+        } else {
+            _erase(sector);
+        };
+    };
+
+    function _write256(address, dataBlob) {
         // Writes up to 256 bytes into MCU's memory
         // (straightforward implementation of the bootloader's
         // Write Memory command).
@@ -154,264 +206,69 @@ class STM32USARTPort {
             throw "Can not write so much as " + dataSize + " bytes in one go.";
         };
 
-        _sendCommand(SPI_CMD_WRITE);
+        _sendCommand(USART_CMD_WRITE);
         _ack();
 
         // prepare big-endian buffer with address bytes
         local addressBlob = blob(4);
-        for (local i = 3; i -= 1; i >= 0) {
+        for (local i = 3; i >= 0; i -= 1) {
             addressBlob[i] = address & 0xff;
             address = address >> 8;
         };
         
         _usartPort.write(addressBlob);
-        _writeByte(_xorChecksum(addressBlob));
+        _sendByte(_xorChecksum(addressBlob));
         _ack();
 
-        _writeByte(dataSize - 1);
+        _sendByte(dataSize - 1);
         _usartPort.write(dataBlob);
+        _sendByte((dataSize - 1) ^ _xorChecksum(dataBlob));
+        _ack();
 
         // Some products may return two NACKs instead of one when Read
         // Protection (RDP) is active (or Read Potection level 1 is active).
         // To know if a given product returns a single NACK or two NACKs
         // in this situation, refer to the known limitations section
         // relative to that product in AN2606.
-        _ack();
-
-    };
-
-    function disconnect() {
-        //
-
-    };
-
-}
-
-class STM32SPIPort {
-    // Implements STM32 bootloader access (initialization
-    // and commands issuing) via SPI.
-
-    _spiPort = null;
-    _spiDataRate = null;
-    _spiSelectPin = null;
-    _send = null;
-
-    constructor(spiPort, spiSelectPin=null, spiDataRate=null) {
-        // Constructor parameters:
-        // -----------------------
-        // ⋅ spiPort − device SPI port;
-        // ⋅ spiDataRate − SPI data rate in kHz (float);
-        // ⋅ spiSelectPin − GPIO pin used to select remote (slave) port
-        //   (can be null if MCU's slave select pin is hardwired).
-
-        // bootloader protocol-related constants
-        const SPI_SYNC = 0x5a;
-        const SPI_PRESYNC = 0xa5;
-        const SPI_DUMMY = 0x00;
-        const SPI_ACK = 0x79;
-        const SPI_NO_ACK = 0x1f;
-
-        // SPI configuration
-        const SPI_WAIT_FOR_ACK = 10000;
-        const SPI_DEFAULT_DATA_RATE = 117.1875;
-
-        // bootloader commands
-        const SPI_CMD_GET_VERSION = 0x01;
-        const SPI_CMD_UNPROTECT = 0x73;
-        const SPI_CMD_ERASE = 0x43;
-        const SPI_CMD_EXT_ERASE = 0x44;
-        const SPI_CMD_WRITE = 0x31;
-
-        _spiPort = spiPort;
-        _spiSelectPin = spiSelectPin;
-        if (spiDataRate == null) {
-                _spiDataRate = SPI_DEFAULT_DATA_RATE;
-            } else {
-                _spiDataRate = spiDataRate;
-            };
-        // temporary structure for the data byte being send
-        _send = blob(1);
-    };
-
-    function _writeReadByte(data=null) {
-        // Reads and writes unsigned integer data simultaneously
-        // from/to SPI port.
-
-        if (data == null) {
-            data = SPI_DUMMY;
+        if (_doubleAckOnWrite) {
+            _ack();
         };
-        _send[0] = data;
-        local recv = _spiPort.writeread(_send);
-        return recv[0];
-    };
-
-    function _ack() {
-        // Waits for reaction on synchronization procedure
-        // or command according to AN4286.
-
-        local recv = null;
-
-        for (local i=SPI_WAIT_FOR_ACK; i-= 1; i > 0) {
-            recv = _writeReadByte();
-            if (recv == SPI_ACK) {
-                return;
-            };
-            if (recv == SPI_NO_ACK) {
-                throw "Connection is not acknowledged!";
-            };
-        };
-
-        throw "Connection is timed out!";
-    };
-
-    function _sendCommand(cmd) {
-        // Sends bootloader command.
-
-        local cmdFrame = blob(3);
-
-        cmdFrame[0] = SPI_SYNC;
-        cmdFrame[1] = cmd;
-        cmdFrame[2] = cmd ^ 0xff;
-
-        server.log("Command frame sent: " + format(
-            "0x%x 0x%x 0x%x", cmdFrame[0], cmdFrame[1], cmdFrame[2]
-        ));
-
-        _spiPort.write(cmdFrame);
-    };
-
-    function _xorChecksum(data) {
-        // Calculates xor checksum for a data blob.
-
-        local checksum = 0;
-
-        foreach (_, dataByte in data) {
-            checksum = checksum ^ dataByte;
-        };
-        return checksum;
-    };
-
-    function connect() {
-        // Configures SPI port and makes sure the bootloader is up
-        // and accepting commands.
-
-        if (_spiSelectPin != null) {
-            // SPI is selected when this pin is low
-            _spiSelectPin.configure(DIGITAL_OUT, 0);
-        };
-
-        // flags are set according to AN2606
-        _spiPort.configure(MSB_FIRST | CLOCK_IDLE_LOW, _spiDataRate);
-
-        // synchronization according to AN4286
-        if (_writeReadByte(SPI_SYNC) != SPI_PRESYNC) {
-            throw "Can not sync with bootloader!";
-        };
-
-        _ack();
-        _writeReadByte(SPI_ACK);
-
-        // read bootloader version
-        _sendCommand(SPI_CMD_GET_VERSION);
-        _ack();
-        local version = _writeReadByte().tostring();
-        version = version.slice(0, -1) + "." + version.slice(-1);
-        server.log("Bootloader version: " + version);
-        _ack();
-    };
-
-    function unprotect() {
-        //
-
-        server.log("Disabling Flash memory write protection");
-
-        _sendCommand(SPI_CMD_UNPROTECT);
-        _ack();
-        _ack();
-    };
-
-    function erase(sector) {
-        //
-
-        server.log("Erasing sector " + sector);
-
-        _sendCommand(SPI_CMD_ERASE);
-        _ack();
-
-        local sectorFrame = blob(3);
-        
-        sectorFrame[0] = 0;
-        sectorFrame[1] = sector & 0xff;
-        sectorFrame[2] = sectorFrame[0] ^ sectorFrame[1];
-
-        _spiPort.write(sectorFrame);
-        _ack();
-
-    };
-
-    function extErase(sector) {
-        // Erases a single sector (or block, or page)
-        // of the MCU's internal Flash ROM. Since our protocol
-        // is of streaming nature, we can hardly make use
-        // of multi-sector erasing or mass erasing.
-
-        server.log("Erasing sector " + sector);
-
-        _sendCommand(SPI_CMD_EXT_ERASE);
-        _ack();
-
-        local sectorFrame = blob(3);
-
-        // erase N+1 sector, where N=0
-        sectorFrame[0] = 0;
-        sectorFrame[1] = 0;
-        sectorFrame[2] = 0;
-        sectorFrame.seek(0);
-        _spiPort.write(sectorFrame);
-        _ack();
-
-        // sector to erase, MSB first
-        sectorFrame[0] = sector >> 8;
-        sectorFrame[1] = sector && 0xff;
-        sectorFrame[2] = sectorFrame[0] ^ sectorFrame[1];
-        sectorFrame.seek(0);
-        _spiPort.write(sectorFrame);
-        _ack();
-    };
-
-    function fullErase() {
-
-        server.log("Erasing Flash");
-
-        _sendCommand(SPI_CMD_EXT_ERASE);
-        _ack();
-
-        local sectorFrame = blob(3);
-
-        // special erase
-        sectorFrame[0] = 0xff;
-        sectorFrame[1] = 0xff;
-        sectorFrame[2] = 0x00;
-        sectorFrame.seek(0);
-        _spiPort.write(sectorFrame);
-        _ack();
-
     };
 
     function write(address, data) {
-        // Writes the data (array of bytes) into MCU's memory,
-        // starting with address given.
+        // Write any volume of data blob to the MCU's internal memory,
+        // starting from given address.
 
-    };
+        server.log(format("START: 0x%08x", address));
+        server.log(format("DATA: %i BYTES", data.len()));
 
-    function disconnect() {
-        // Deselects SPI port.
+        data.seek(0);
 
-        if (_spiSelectPin != null) {
-            _spiSelectPin.write(1);
+        while (!data.eos()) {
+
+            // limit the size of data being writen to 256 bytes (AN3155)
+            local divider = data.len();
+
+            if (divider > 256) {
+                divider = 256;
+            };
+
+            // write data
+            _write256(address, data.readblob(divider));
+
+            // correct address and remaining data
+            if (!data.eos()) {
+                data = data.readblob(data.len());
+                address += divider;
+            };
         };
     };
 
+    function disconnect() {
+        // Frees USART port.
+
+        _usartPort.disable();
+    };
 }
 
 class DFUSTM32Device {
@@ -477,7 +334,8 @@ class DFUSTM32Device {
 
         _port.connect();
 
-        _port.extErase(10);
+        // TODO: implement erase command on agent
+        _port.erase(0);
 
         server.log("Bootloader is on.");
 
@@ -503,6 +361,8 @@ class DFUSTM32Device {
 
     function writeChunk(chunk) {
         // write chunk
+
+        _port.write(chunk.start, chunk.data);
 
         server.log(
             "Chunk " + chunk.start + ":" +
