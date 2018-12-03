@@ -39,7 +39,8 @@ class STM32USARTPort {
 
         const USART_DEFAULT_DATA_RATE = 115200;
         const USART_POLL_INTERVAL = 0.01
-        const USART_POLL_RETRIES = 500
+        // Flash erase operations can take a long time
+        const USART_POLL_RETRIES = 3000
 
         _usartPort = usartPort;
         _extendedErase = extendedErase;
@@ -105,8 +106,7 @@ class STM32USARTPort {
 
         switch (reply) {
             case USART_ACK:
-                server.log("Acknowledged!");
-                break;
+                return;
 
             case USART_NO_ACK:
                 throw "Not acknowledged!";
@@ -161,6 +161,17 @@ class STM32USARTPort {
         _ack();
     };
 
+    function _bulkErase() {
+        // Short bulk erase implementation.
+
+        _sendCommand(USART_CMD_ERASE);
+        _ack();
+
+        _sendByte(0xff);
+        _sendByte(0x00);
+        _ack();
+    };
+
     function _extErase(sector) {
         // Extended erase implementation.
 
@@ -183,16 +194,42 @@ class STM32USARTPort {
         _ack();
     };
 
+    function _extBulkErase() {
+        // Extended bulk erase implementation.
+
+        _sendCommand(USART_CMD_EXT_ERASE);
+        _ack();
+
+        // erase one sector
+        _sendByte(0xff);
+        _sendByte(0xff);
+        _sendByte(0x00);
+        _ack();
+    };
+
     function erase(sector) {
-        // Selects proper method of erasing a sector of the MCU's
-        // internal Flash ROM. Since our protocol is of streaming
-        // nature, we can hardly make use of multi-sector erasing
-        // or mass erasing.
+        // Selects proper method of erasing one sector of the MCU's
+        // internal Flash ROM.
+
+        server.log(format("Erasing Flash ROM sector 0x%04x", sector));
 
         if (_extendedErase) {
             _extErase(sector);
         } else {
             _erase(sector);
+        };
+    };
+
+    function bulkErase() {
+        // Selects proper method of bulk erasing the MCU's internal
+        // Flash ROM.
+
+        server.log("Erasing Flash ROM");
+
+        if (_extendedErase) {
+            _extBulkErase();
+        } else {
+            _bulkErase();
         };
     };
 
@@ -277,13 +314,20 @@ class DFUSTM32Device {
     static VERSION = "0.1.0";
 
     _port = null;
+    _flashSectorMap = null;
+    _flashErasedSectors = null;
     bootModePin = null;
     resetPin = null;
 
-    constructor(port) {
+    constructor(port, flashSectorMap=null) {
         // Constructor parameters:
         // -----------------------
-        // ⋅ port − DFU port object.
+        // ⋅ port − DFU port object;
+        // ⋅ flashSectorMap − (optional) a map of {sector number: sector
+        //   descriptor}. Sector descriptor is a two-array of [start
+        //   address, end address] of a sector. If not set, device will
+        //   perform a bulk erase of MCU's Flash ROM (default). Empty map
+        //   means no Flash ROM erase will be done.
 
         const EVENT_START_FLASHING = "start-flashing";
         const EVENT_REQUEST_CHUNK = "request-chunk";
@@ -291,6 +335,10 @@ class DFUSTM32Device {
         const EVENT_DONE_FLASHING = "done-flashing";
 
         _port = port;
+        if (flashSectorMap != null) {
+            _flashSectorMap = flashSectorMap;
+            _flashErasedSectors = [];
+        };
 
         init();
     };
@@ -326,21 +374,18 @@ class DFUSTM32Device {
 
         bootModePin.write(1);
         resetPin.write(0);
-        imp.sleep(1);
-
+        // hold reset for a while
+        imp.sleep(0.1);
         resetPin.write(1);
-
-        imp.sleep(1);
-
+        // give bootloader time to initialize itself
+        imp.sleep(0.1);
         _port.connect();
-
-        // TODO: implement erase command on agent
-        _port.erase(0);
 
         server.log("Bootloader is on.");
 
-        imp.sleep(1);
-
+        if (_flashSectorMap == null) {
+            _port.bulkErase();
+        };
     };
 
     function onReceiveChunk(chunk) {
@@ -362,6 +407,39 @@ class DFUSTM32Device {
     function writeChunk(chunk) {
         // write chunk
 
+        if (_flashSectorMap != null) {
+            // see which sectors this chunk resides in
+            local chunkSectors = [];
+
+            foreach (sector, descr in _flashSectorMap) {
+                if (
+                    chunk.start <= descr[1] &&
+                    chunk.start + chunk.data.len() > descr[0]
+                ) {
+                    // chunk crosses the sector boundaries
+                    chunkSectors.append(sector);
+                };
+            };
+
+            if (!chunkSectors.len()) {
+                server.log(format(
+                    "Trying to write without prior erasing: 0x%08x-0x%08x",
+                    chunk.start,
+                    chunk.start + chunk.data.len() - 1
+                ));
+            };
+
+            // see if the sectors are already erased
+            foreach (sector in chunkSectors) {
+                if (_flashErasedSectors.find(sector) == null) {
+                    // sector is not erased, erase it
+                    _port.erase(sector);
+                    // list sector as erased
+                    _flashErasedSectors.append(sector);
+                };
+            };
+        };
+
         _port.write(chunk.start, chunk.data);
 
         server.log(
@@ -373,14 +451,16 @@ class DFUSTM32Device {
     function dismissBootloader() {
         // reboot MCU in normal mode
 
+        _port.disconnect();
+
+        server.log("Resetting...");
+
         bootModePin.write(0);
         resetPin.write(0);
-        imp.sleep(1);
+        // hold reset for a while
+        imp.sleep(0.1);
         resetPin.write(1);
-
-        _port.disconnect();
 
         server.log("Bootloader is off.");
     };
-
 }
