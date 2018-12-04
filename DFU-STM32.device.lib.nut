@@ -316,10 +316,22 @@ class DFUSTM32Device {
     _port = null;
     _flashSectorMap = null;
     _flashErasedSectors = null;
-    bootModePin = null;
-    resetPin = null;
+    
+    _bootModePin = null;
+    _resetPin = null;
 
-    constructor(port, flashSectorMap=null) {
+    invokeCallback = null;
+    startCallback = null;
+    receiveChunkCallback = null;
+    doneCallback = null;
+    dismissCallback = null;
+
+    constructor(
+        port,
+        flashSectorMap=null,
+        bootModePin=null,
+        resetPin=null
+    ) {
         // Constructor parameters:
         // -----------------------
         // ⋅ port − DFU port object;
@@ -327,17 +339,30 @@ class DFUSTM32Device {
         //   descriptor}. Sector descriptor is a two-array of [start
         //   address, end address] of a sector. If not set, device will
         //   perform a bulk erase of MCU's Flash ROM (default). Empty map
-        //   means no Flash ROM erase will be done.
+        //   means no Flash ROM erase will be done;
+        // ⋅ bootModePin − GPIO pin that sets bootloader mode on (high)
+        //   or off (low). Samples by the MCU on reset;
+        // ⋅ resetPin − GPIO pin that resets MCU when driven low. Must be
+        //   open-drained.
 
         const EVENT_START_FLASHING = "start-flashing";
         const EVENT_REQUEST_CHUNK = "request-chunk";
         const EVENT_RECEIVE_CHUNK = "receive-chunk";
         const EVENT_DONE_FLASHING = "done-flashing";
 
+        const STATUS_OK = "OK";
+        const STATUS_ABORTED = "Aborted";
+
         _port = port;
         if (flashSectorMap != null) {
             _flashSectorMap = flashSectorMap;
             _flashErasedSectors = [];
+        };
+        if (bootModePin != null) {
+            _bootModePin = bootModePin;
+        };
+        if (resetPin != null) {
+            _resetPin = resetPin;
         };
 
         init();
@@ -346,23 +371,17 @@ class DFUSTM32Device {
     function init() {
         agent.on(EVENT_START_FLASHING, onStartFlashing.bindenv(this));
         agent.on(EVENT_RECEIVE_CHUNK, onReceiveChunk.bindenv(this));
-
-        // boot modes:
-        // 0 − from the main Flash memory
-        // 1 − from the system memory (bootloader)
-        bootModePin = hardware.pin5;
-        bootModePin.configure(DIGITAL_OUT);
-
-        // must be held high for normal MCU operation
-        resetPin = hardware.pin7;
-        resetPin.configure(DIGITAL_OUT_OD, 1);
     };
 
     function onStartFlashing(_) {
         // EVENT_START_FLASHING handler
 
-        invokeBootloader();
-        agent.send(EVENT_REQUEST_CHUNK, null);
+        if (startCallback == null || startCallback(this)) {
+            invokeBootloader();
+            agent.send(EVENT_REQUEST_CHUNK, null);
+        } else {
+            agent.send(EVENT_DONE_FLASHING, STATUS_ABORTED);
+        };
     };
 
     function invokeBootloader() {
@@ -370,17 +389,32 @@ class DFUSTM32Device {
         // or issue some command to MCU
         // for reboot itself into the bootloader mode
 
+        // boot modes:
+        // 0 − from the main Flash memory
+        // 1 − from the system memory (bootloader)
+        _bootModePin.configure(DIGITAL_OUT);
+
+        // must be held high for normal MCU operation
+        _resetPin.configure(DIGITAL_OUT_OD, 1);
+
         server.log("Resetting...");
 
-        bootModePin.write(1);
-        resetPin.write(0);
-        // hold reset for a while
-        imp.sleep(0.1);
-        resetPin.write(1);
-        // give bootloader time to initialize itself
-        imp.sleep(0.1);
-        _port.connect();
+        if (invokeCallback == null || invokeCallback(this)) {
 
+            if (_bootModePin == null && _resetPin == null) {
+                throw "You must set boot mode and reset GPIO pins " +
+                      "to use the default bootloader invocation method."
+            };
+
+            _bootModePin.write(1);
+            _resetPin.write(0);
+            // hold reset for a while
+            imp.sleep(0.1);
+            _resetPin.write(1);
+            // give bootloader time to initialize itself
+            imp.sleep(0.1);
+            _port.connect();
+        };
         server.log("Bootloader is on.");
 
         if (_flashSectorMap == null) {
@@ -391,17 +425,22 @@ class DFUSTM32Device {
     function onReceiveChunk(chunk) {
         // EVENT_RECEIVE_CHUNK handler
         
-        if (chunk) {
+        if (chunk && (
+            receiveChunkCallback == null ||
+            receiveChunkCallback(this, chunk)
+        )) {
             writeChunk(chunk);
             agent.send(EVENT_REQUEST_CHUNK, null);
         } else {
             dismissBootloader();
 
-            // TODO: "OK" → try to make sure that MCU is up
-            // and running in normal mode
-            agent.send(EVENT_DONE_FLASHING, "OK");
+            local status = STATUS_OK;
+            if (doneCallback != null) {
+                status = doneCallback(this);
+            };
+
+            agent.send(EVENT_DONE_FLASHING, status);
         };
-        
     };
 
     function writeChunk(chunk) {
@@ -455,11 +494,13 @@ class DFUSTM32Device {
 
         server.log("Resetting...");
 
-        bootModePin.write(0);
-        resetPin.write(0);
-        // hold reset for a while
-        imp.sleep(0.1);
-        resetPin.write(1);
+        if (dismissCallback == null || dismissCallback(this)) {
+            _bootModePin.write(0);
+            _resetPin.write(0);
+            // hold reset for a while
+            imp.sleep(0.1);
+            _resetPin.write(1);
+        };
 
         server.log("Bootloader is off.");
     };

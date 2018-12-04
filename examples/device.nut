@@ -2,10 +2,11 @@
 
 @include "DFU-STM32/DFU-STM32.device.lib.nut"
 
+// create Flash ROM sector map
+
 // from STM32F412 reference manual (RM0402),
 // section 3.3 “Embedded Flash memory”
 local STM32F412FlashMap = {};
-
 STM32F412FlashMap[0] <- [0x08000000, 0x08003fff];
 STM32F412FlashMap[1] <- [0x08004000, 0x08007fff];
 STM32F412FlashMap[2] <- [0x08008000, 0x0800bfff];
@@ -19,5 +20,11 @@ STM32F412FlashMap[9] <- [0x080a0000, 0x080bffff];
 STM32F412FlashMap[10] <- [0x080c0000, 0x080dffff];
 STM32F412FlashMap[11] <- [0x080e0000, 0x080fffff];
 
+// create port object with Imp hardware port as a parameter
 local port = STM32USARTPort(hardware.uart1289);
-local dfu_stm32 = DFUSTM32Device(port, STM32F412FlashMap);
+
+// create device object and set its port object, Flash map,
+// mode setting pin, and reset pin
+local dfu_stm32 = DFUSTM32Device(
+    port, STM32F412FlashMap, hardware.pin5, hardware.pin7
+);

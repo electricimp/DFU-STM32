@@ -222,6 +222,8 @@ class DFUSTM32Agent {
     _blobParser = null;
     _chunks = null;
     _maxBlobSize = null;
+    
+    doneCallback = null;
 
     constructor(maxBlobSize=32768) {
         // initialize agent
@@ -266,7 +268,9 @@ class DFUSTM32Agent {
     function onDoneFlashing(status) {
         // EVENT_DONE_FLASHING handler
 
-        server.log("Flashing is done. Status: " + status);
+        if (doneCallback != null) {
+            doneCallback(status);
+        };
     };
 
 }
