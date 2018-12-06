@@ -198,6 +198,10 @@ class IntelHexParser {
                         chunkOffset = record.offset;
                         yield chunk;
                     };
+
+                    // prepare to reuse the file
+                    _fileBlob.seek(0);
+
                     // stop
                     return;
 
@@ -220,9 +224,13 @@ class DFUSTM32Agent {
     static VERSION = "0.1.0";
 
     _blobParser = null;
-    _chunks = null;
     _maxBlobSize = null;
     
+    chunks = null;
+
+    // callbacks
+    beforeSendBlobCallback = null;
+    beforeSendChunkCallback = null;
     doneCallback = null;
 
     constructor(maxBlobSize=32768) {
@@ -243,11 +251,10 @@ class DFUSTM32Agent {
         device.on(EVENT_DONE_FLASHING, onDoneFlashing.bindenv(this));
     };
 
-    function validateBlob(blob) {
-        // check memory ranges or target MCU type/PnP ID,
-        // maybe include custom callback
+    function _resetChunks() {
+        // Resets chunk generator
 
-        // ...
+        chunks = _blobParser.generateChunks();
     };
 
     function sendBlob(blob) {
@@ -255,21 +262,38 @@ class DFUSTM32Agent {
         // send it to device
 
         _blobParser = IntelHexParser(blob);
-        _chunks = _blobParser.generateChunks();
+        _resetChunks();
+
+        // process callback
+        if (beforeSendBlobCallback != null) {
+            if (!beforeSendBlobCallback(this)) {
+                // if callback returns falsy value, stop sending blob
+                return;
+            };
+            // cleanup after running callback
+            _resetChunks();
+        };
+
+        // start flashing
         device.send(EVENT_START_FLASHING, null);
     };
 
     function onRequestChunk(_) {
         // EVENT_REQUEST_CHUNK handler
 
-        device.send(EVENT_RECEIVE_CHUNK, resume _chunks);
+        local chunk = resume chunks;
+
+        if (beforeSendChunkCallback != null) {
+            beforeSendChunkCallback(this, chunk);
+        };
+        device.send(EVENT_RECEIVE_CHUNK, chunk);
     };
 
     function onDoneFlashing(status) {
         // EVENT_DONE_FLASHING handler
 
         if (doneCallback != null) {
-            doneCallback(status);
+            doneCallback(this, status);
         };
     };
 

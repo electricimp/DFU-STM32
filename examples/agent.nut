@@ -3,13 +3,49 @@
 @include "DFU-STM32/DFU-STM32.agent.lib.nut"
 
 local status = "Idle";
+local firmwareSize = 0;
+local progressCounter = 0;
 
-function setStatus(flashingStatus) {
+function getProgress() {
+    // Returns float value of progress in %.
+
+    return progressCounter.tofloat() / firmwareSize.tofloat() * 100.0;
+};
+
+function setStatus(stm32, flashingStatus) {
+    // Set status back to “Idle”.
+
     status = "Idle";
+    server.log("Flashing is done.");
+};
+
+function determineFirmwareSize(stm32) {
+    // Determine the size of the firmware binary.
+
+    foreach (chunk in stm32.chunks) {
+        if (chunk != null) {
+            firmwareSize += chunk.data.len();
+        };
+    };
+    server.log(format("Firmware size is %i bytes", firmwareSize));
+
+    return true;
+};
+
+function advanceCounter(stm32, chunk) {
+    // Advance and display the progress counter.
+
+    if (chunk != null) {
+        progressCounter += chunk.data.len();
+        
+        server.log(format("Flashing: %.1f%% done", getProgress()));
+    };
 };
 
 local dfu_stm32 = DFUSTM32Agent();
 dfu_stm32.doneCallback = setStatus;
+dfu_stm32.beforeSendBlobCallback = determineFirmwareSize;
+dfu_stm32.beforeSendChunkCallback = advanceCounter;
 
 function updateFirmware(request, response) {
     // MCU's firmware update callback.
@@ -31,7 +67,10 @@ function updateFirmware(request, response) {
             // check if update is possible
             if (status == "Busy") {
                 responseCode = 400;
-                responseBody.message = "Firmware update is in progress.";
+                responseBody.message = format(
+                    "Firmware update is in progress. %.1f%% is complete so far.",
+                    getProgress()
+                );
                 break;
             };
 
@@ -40,7 +79,7 @@ function updateFirmware(request, response) {
                 // Different content types may signify different methods of
                 // firmware delivery. For example, “application/octet-stream”
                 // means that the body of the request contains the firmware
-                // itself
+                // itself.
 
                 status = "Busy";
                 server.log("Firmware recieved.");
@@ -65,13 +104,13 @@ function updateFirmware(request, response) {
 };
 
 function dispatchRequest(request, response) {
-    // This is a simple HTTP requests dispatcher
+    // This is a simple HTTP requests dispatcher.
 
     local dispatchTable = {};
     dispatchTable["/firmware/update"] <- updateFirmware;
 
     // There may be other agent functions controlled via Internet.
-    // They all should be placed in dispatchTable
+    // They all should be placed in dispatchTable.
 
     foreach (urlPattern, handler in dispatchTable) {
         if (request.path.find(urlPattern) == 0) {

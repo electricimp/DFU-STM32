@@ -276,9 +276,6 @@ class STM32USARTPort {
         // Write any volume of data blob to the MCU's internal memory,
         // starting from given address.
 
-        server.log(format("START: 0x%08x", address));
-        server.log(format("DATA: %i BYTES", data.len()));
-
         data.seek(0);
 
         while (!data.eos()) {
@@ -397,8 +394,6 @@ class DFUSTM32Device {
         // must be held high for normal MCU operation
         _resetPin.configure(DIGITAL_OUT_OD, 1);
 
-        server.log("Resetting...");
-
         if (invokeCallback == null || invokeCallback(this)) {
 
             if (_bootModePin == null && _resetPin == null) {
@@ -406,6 +401,7 @@ class DFUSTM32Device {
                       "to use the default bootloader invocation method."
             };
 
+            server.log("Resetting...");
             _bootModePin.write(1);
             _resetPin.write(0);
             // hold reset for a while
@@ -480,11 +476,6 @@ class DFUSTM32Device {
         };
 
         _port.write(chunk.start, chunk.data);
-
-        server.log(
-            "Chunk " + chunk.start + ":" +
-            chunk.data.len() + " is written."
-        );
     };
 
     function dismissBootloader() {
@@ -492,9 +483,8 @@ class DFUSTM32Device {
 
         _port.disconnect();
 
-        server.log("Resetting...");
-
         if (dismissCallback == null || dismissCallback(this)) {
+            server.log("Resetting...");
             _bootModePin.write(0);
             _resetPin.write(0);
             // hold reset for a while
