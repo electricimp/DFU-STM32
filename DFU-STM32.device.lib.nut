@@ -7,16 +7,12 @@ class STM32USARTPort {
 
     _usartPort = null;
     _usartDataRate = null;
-    _send = null;
-    _extendedErase = null;
     _doubleAckOnWrite = null;
 
-    constructor(
-        usartPort,
-        usartDataRate=null,
-        extendedErase=true,
-        doubleAckOnWrite=false
-    ) {
+    _send = null;
+    _extendedErase = null;
+
+    constructor(usartPort, usartDataRate=null, doubleAckOnWrite=false) {
         // Constructor parameters:
         // -----------------------
         // ⋅ usartPort − Imp device serial port;
@@ -32,6 +28,7 @@ class STM32USARTPort {
         const USART_ACK = 0x79;
         const USART_NO_ACK = 0x1f;
 
+        const USART_CMD_GET = 0x00;
         const USART_CMD_GET_VERSION = 0x01;
         const USART_CMD_ERASE = 0x43;
         const USART_CMD_EXT_ERASE = 0x44;
@@ -43,7 +40,6 @@ class STM32USARTPort {
         const USART_POLL_RETRIES = 3000
 
         _usartPort = usartPort;
-        _extendedErase = extendedErase;
         _doubleAckOnWrite = doubleAckOnWrite;
 
         if (usartDataRate == null) {
@@ -126,20 +122,45 @@ class STM32USARTPort {
         _sendByte(USART_SYNC);
         _ack();
 
-        _sendCommand(USART_CMD_GET_VERSION);
+        local getResult = __get();
+        server.log("Bootloader version: " + getResult[0]);
+
+        // determine supported erase command
+        if (getResult[1].find(USART_CMD_EXT_ERASE) != null) {
+            _extendedErase = true;
+        };
+        if (getResult[1].find(USART_CMD_ERASE) != null) {
+            _extendedErase = false;
+        };
+        if (_extendedErase == null) {
+            throw "Erase commands are not supported by the bootloader.";
+        };
+    };
+
+    function __get() {
+        // Issues Get command. Returns bootloader version and
+        // a list of supported commands.
+
+        _sendCommand(USART_CMD_GET);
         _ack();
 
-        local reply = blob(3);
+        // the number of bytes to follow – 1 except current
+        // and ACKs (from AN3155)
+        local replyLength = _readByte();
 
-        foreach (i, _ in reply) {
-            reply[i] = _readByte();
+        // bootloader version (0 < Version < 255),
+        // example: 0x10 = Version 1.0 (from AN3155)
+        local version = _readByte().tostring();
+        version = version.slice(0, -1) + "." + version.slice(-1);
+
+        // get commands
+        local commandList = [];
+        for (local i = 0; i < replyLength; i += 1) {
+            commandList.append(_readByte());
         };
 
-        local version = reply[0].tostring();
-        version = version.slice(0, -1) + "." + version.slice(-1);
-        server.log("Bootloader version: " + version);
-
         _ack();
+        return [version, commandList];
     };
 
     function _erase(sector) {
