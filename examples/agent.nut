@@ -43,9 +43,9 @@ function advanceCounter(stm32, chunk) {
 };
 
 local dfu_stm32 = DFUSTM32Agent();
-dfu_stm32.doneCallback = setStatus;
-dfu_stm32.beforeSendBlobCallback = determineFirmwareSize;
-dfu_stm32.beforeSendChunkCallback = advanceCounter;
+dfu_stm32.setBeforeSendBlob(determineFirmwareSize);
+dfu_stm32.setBeforeSendChunk(advanceCounter);
+dfu_stm32.setOnDone(setStatus);
 
 function updateFirmware(request, response) {
     // MCU's firmware update callback.

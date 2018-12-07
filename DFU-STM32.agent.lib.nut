@@ -229,9 +229,9 @@ class DFUSTM32Agent {
     chunks = null;
 
     // callbacks
-    beforeSendBlobCallback = null;
-    beforeSendChunkCallback = null;
-    doneCallback = null;
+    _beforeSendBlob = null;
+    _beforeSendChunk = null;
+    _onDone = null;
 
     constructor(maxBlobSize=32768) {
         // initialize agent
@@ -251,6 +251,49 @@ class DFUSTM32Agent {
         device.on(EVENT_DONE_FLASHING, onDoneFlashing.bindenv(this));
     };
 
+    function setBeforeSendBlob(beforeSendBlob) {
+        // Set callback for the moment after all agent side
+        // initialization is done, but before sending blob to
+        // device.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Agent class instance.
+        //
+        // Callback should return falsey value to abort sending
+        // blob to device, or truey value to continue operation.
+
+
+        _beforeSendBlob = beforeSendBlob;
+    };
+
+    function setBeforeSendChunk(beforeSendChunk) {
+        // Set callback for the moment before sending chunk
+        // to device.
+        //
+        // Callback parameters:
+        // ⋅ DFUSTM32Agent class instance;
+        // ⋅ chunk (either table with target address and blob of
+        //   binary data, or null − end of transfer).
+        //
+        // No return value specified.
+
+        _beforeSendChunk = beforeSendChunk;
+    };
+
+    function setOnDone(onDone) {
+        // Set callback for the end of the agent-device operation.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Agent class instance;
+        // ⋅ client status string. By default it is either "OK" or
+        //   "Aborted", but the range of statuses can be extended
+        //   on device's side.
+        //        
+        // No return value specified.
+
+        _onDone = onDone;
+    };
+
     function _resetChunks() {
         // Resets chunk generator
 
@@ -265,8 +308,8 @@ class DFUSTM32Agent {
         _resetChunks();
 
         // process callback
-        if (beforeSendBlobCallback != null) {
-            if (!beforeSendBlobCallback(this)) {
+        if (_beforeSendBlob != null) {
+            if (!_beforeSendBlob(this)) {
                 // if callback returns falsy value, stop sending blob
                 return;
             };
@@ -283,8 +326,8 @@ class DFUSTM32Agent {
 
         local chunk = resume chunks;
 
-        if (beforeSendChunkCallback != null) {
-            beforeSendChunkCallback(this, chunk);
+        if (_beforeSendChunk != null) {
+            _beforeSendChunk(this, chunk);
         };
         device.send(EVENT_RECEIVE_CHUNK, chunk);
     };
@@ -292,8 +335,8 @@ class DFUSTM32Agent {
     function onDoneFlashing(status) {
         // EVENT_DONE_FLASHING handler
 
-        if (doneCallback != null) {
-            doneCallback(this, status);
+        if (_onDone != null) {
+            _onDone(this, status);
         };
     };
 

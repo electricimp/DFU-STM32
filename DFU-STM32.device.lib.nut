@@ -338,12 +338,12 @@ class DFUSTM32Device {
     _bootModePin = null;
     _resetPin = null;
 
-    invokeCallback = null;
-    startCallback = null;
-    receiveChunkCallback = null;
-    doneCallback = null;
-    dismissCallback = null;
-
+    _beforeStart = null;
+    _beforeInvoke = null;
+    _onReceiveChunk = null;
+    _beforeDismiss = null;
+    _beforeDone = null;
+    
     constructor(
         port,
         flashSectorMap=null,
@@ -372,15 +372,11 @@ class DFUSTM32Device {
         const STATUS_ABORTED = "Aborted";
 
         _port = port;
+        _bootModePin = bootModePin;
+        _resetPin = resetPin;
         if (flashSectorMap != null) {
             _flashSectorMap = flashSectorMap;
             _flashErasedSectors = [];
-        };
-        if (bootModePin != null) {
-            _bootModePin = bootModePin;
-        };
-        if (resetPin != null) {
-            _resetPin = resetPin;
         };
 
         init();
@@ -391,10 +387,87 @@ class DFUSTM32Device {
         agent.on(EVENT_RECEIVE_CHUNK, onReceiveChunk.bindenv(this));
     };
 
+    function setBeforeStart(beforeStart) {
+        // Set callback for the time just before the process of
+        // flashing starts. It can be used to check power source,
+        // ask user permission, et c.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Device class instance.
+        //
+        // Callback should return falsey value to abort flashing,
+        // or truey value to continue operation.
+
+        _beforeStart = beforeStart;
+    };
+
+    function setBeforeInvoke(beforeInvoke) {
+        // Set callback to replace or prepend the standard
+        // mechanism of entering the bootloader on the MCU.
+        // Fires right after `_beforeStart`. Have its
+        // counterpart callback, `_beforeDismiss`.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Device class instance.
+        //
+        // Callback should return falsey value to skip the
+        // standard mechanism and proceed to bootloader
+        // connecting, or truey value to enter the bootloader
+        // mode by manipulating reset and bootX pins.
+
+        _beforeInvoke = beforeInvoke;
+    };
+
+    function setOnReceiveChunk(onReceiveChunk) {
+        // Set callback for receiving chunk from agent.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Device class instance;
+        // ⋅ chunk (either table with target address and blob
+        //   of binary data, or null − end of transfer).
+        //
+        // Callback should return truey value to proceed or
+        // falsey value to abort writing data and proceed to
+        // finalize flashing and switch MCU into normal mode.
+
+        _onReceiveChunk = onReceiveChunk;
+    };
+
+    function setBeforeDismiss(beforeDismiss) {
+        // Set callback to replace or prepend the standard
+        // mechanism of leaving the bootloader. Fires before
+        // `_beforeDone`.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Device class instance.
+        //
+        // Callback should return falsey value to skip the
+        // standard mechanism, or truey value to proceed
+        // switching MCU to the normal mode by manipulating
+        // reset and bootX pins.
+
+        _beforeDismiss = beforeDismiss;
+    };
+
+    function setBeforeDone(beforeDone) {
+        // Set callback for the end of device operation.
+        // Use this chance to perform extra cleanup,
+        // extend status, et c.
+        //
+        // Callback parameter:
+        // ⋅ DFUSTM32Device class instance;
+        // ⋅ default device status: either STATUS_OK or
+        //   STATUS_ABORTED.
+        //
+        // Callback should return device status string.
+
+        _beforeDone = beforeDone;
+    };
+
     function onStartFlashing(_) {
         // EVENT_START_FLASHING handler
 
-        if (startCallback == null || startCallback(this)) {
+        if (_beforeStart == null || _beforeStart(this)) {
             invokeBootloader();
             agent.send(EVENT_REQUEST_CHUNK, null);
         } else {
@@ -415,7 +488,7 @@ class DFUSTM32Device {
         // must be held high for normal MCU operation
         _resetPin.configure(DIGITAL_OUT_OD, 1);
 
-        if (invokeCallback == null || invokeCallback(this)) {
+        if (_beforeInvoke == null || _beforeInvoke(this)) {
 
             if (_bootModePin == null && _resetPin == null) {
                 throw "You must set boot mode and reset GPIO pins " +
@@ -441,23 +514,25 @@ class DFUSTM32Device {
 
     function onReceiveChunk(chunk) {
         // EVENT_RECEIVE_CHUNK handler
-        
-        if (chunk && (
-            receiveChunkCallback == null ||
-            receiveChunkCallback(this, chunk)
-        )) {
-            writeChunk(chunk);
-            agent.send(EVENT_REQUEST_CHUNK, null);
-        } else {
-            dismissBootloader();
 
-            local status = STATUS_OK;
-            if (doneCallback != null) {
-                status = doneCallback(this);
+        local status = STATUS_OK;
+
+        if (_onReceiveChunk == null || _onReceiveChunk(this, chunk)) {
+            if (chunk != null) {
+                writeChunk(chunk);
+                agent.send(EVENT_REQUEST_CHUNK, null);
+                return;
             };
-
-            agent.send(EVENT_DONE_FLASHING, status);
+        } else {
+            status = STATUS_ABORTED;
         };
+
+        dismissBootloader();
+        
+        if (_beforeDone != null) {
+            status = _beforeDone(this, status);
+        };
+        agent.send(EVENT_DONE_FLASHING, status);
     };
 
     function writeChunk(chunk) {
@@ -500,11 +575,11 @@ class DFUSTM32Device {
     };
 
     function dismissBootloader() {
-        // reboot MCU in normal mode
+        // Reboots MCU to normal mode.
 
         _port.disconnect();
 
-        if (dismissCallback == null || dismissCallback(this)) {
+        if (_beforeDismiss == null || _beforeDismiss(this)) {
             server.log("Resetting...");
             _bootModePin.write(0);
             _resetPin.write(0);
