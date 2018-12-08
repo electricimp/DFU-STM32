@@ -1,5 +1,28 @@
-// DFU-STM32 device library
+// MIT License
+//
+// Copyright 2015-2018 Electric Imp
+//
+// SPDX-License-Identifier: MIT
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+// EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+// OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 
+// DFU-STM32 device library
 
 class STM32USARTPort {
     // Implements STM32 bootloader access (initialization
@@ -368,6 +391,11 @@ class DFUSTM32Device {
         const EVENT_RECEIVE_CHUNK = "receive-chunk";
         const EVENT_DONE_FLASHING = "done-flashing";
 
+        // time to hold reset
+        const RESET_DELAY = 0.01
+        // time for bootloader initialization
+        const BOOTLOADER_DELAY = 0.1
+
         const STATUS_OK = "OK";
         const STATUS_ABORTED = "Aborted";
 
@@ -498,11 +526,9 @@ class DFUSTM32Device {
             server.log("Resetting...");
             _bootModePin.write(1);
             _resetPin.write(0);
-            // hold reset for a while
-            imp.sleep(0.1);
+            imp.sleep(RESET_DELAY);
             _resetPin.write(1);
-            // give bootloader time to initialize itself
-            imp.sleep(0.1);
+            imp.sleep(BOOTLOADER_DELAY);
             _port.connect();
         };
         server.log("Bootloader is on.");
@@ -583,8 +609,7 @@ class DFUSTM32Device {
             server.log("Resetting...");
             _bootModePin.write(0);
             _resetPin.write(0);
-            // hold reset for a while
-            imp.sleep(0.1);
+            imp.sleep(RESET_DELAY);
             _resetPin.write(1);
         };
 
