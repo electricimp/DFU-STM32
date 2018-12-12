@@ -126,8 +126,8 @@ class STM32USARTPort {
     };
 
     function write(address, data) {
-        // Write any volume of data blob to the MCU's internal memory,
-        // starting from given address.
+        // Write any volume of data to the MCU's internal memory, starting
+        // from given address.
 
         data.seek(0);
 
