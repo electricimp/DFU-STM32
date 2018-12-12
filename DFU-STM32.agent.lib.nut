@@ -42,7 +42,7 @@ class IntelHexParser {
 
         // Intel Hex file format-related constants:
 
-        // - record types, that can be used in storing ARM MCU firmware
+        // record types, that can be used in storing ARM MCU firmware
         const RECORD_TYPE_DATA = "00";     // Data Record
         const RECORD_TYPE_EOF = "01";      // End of File Record
         const RECORD_TYPE_ULBA = "04";     // Extended Linear Address Record
@@ -59,81 +59,6 @@ class IntelHexParser {
             _chunkSize = chunkSize;
         };
         _fileBlob = fileBlob;
-    };
-
-    function _hexToInt(str) {
-        // Converts a string of hexadecimal digits to an integer.
-
-        local hex = 0;
-
-        foreach (ch in str) {
-            local nibble;
-
-            if (ch >= '0' && ch <= '9') {
-                nibble = (ch - '0');
-            } else if (ch >= 'A' && ch <= 'F') {
-                nibble = (ch - 'A' + 10);
-            } else if (ch >= 'a' && ch <= 'f') {
-                nibble = (ch - 'a' + 10);
-            } else {
-                throw PARSE_ERROR_MSG + "hex digit is out of range";
-            };
-            hex = (hex << 4) + nibble;
-        }
-        return hex;
-    };
-
-    function _parseRecord() {
-        // Parse Intel Hex record and return its type and contents. Move the
-        // blob's pointer to the next record.
-
-        // eat cr/lfs
-        local recordMark = null;
-        do {
-            recordMark = _fileBlob.readstring(1);
-        } while (SPACING_CHARS.find(recordMark));
-
-        if (recordMark != ":") {
-            throw PARSE_ERROR_MSG + "record mark is invalid: " + recordMark;
-        };
-
-        local recordLength = _hexToInt(_fileBlob.readstring(2));
-        local loadOffset = _hexToInt(_fileBlob.readstring(4));
-        local recordType = _fileBlob.readstring(2);
-
-        // save data position in blob and skip data by now
-        local dataPointer = _fileBlob.tell();
-        _fileBlob.seek(recordLength * 2, 'c');
-
-        local checkSum = _hexToInt(_fileBlob.readstring(2));
-        local result = {
-            "type": recordType,
-            "offset": loadOffset,
-            "data": null
-        };
-
-        switch (recordType) {
-            case RECORD_TYPE_ULBA:
-                // extended linear address record (ULBA)
-                local tempPointer = _fileBlob.tell();
-                _fileBlob.seek(dataPointer);
-                result.data = _hexToInt(_fileBlob.readstring(recordLength * 2));
-                _fileBlob.seek(tempPointer);
-                break;
-
-            case RECORD_TYPE_DATA:
-                // data record
-                local tempPointer = _fileBlob.tell();
-                _fileBlob.seek(dataPointer);
-                result.data = blob(recordLength);
-                for (local i = 0; i < recordLength; i += 1) {
-                    result.data[i] = _hexToInt(_fileBlob.readstring(2));
-                };
-                _fileBlob.seek(tempPointer);
-                break;
-        };
-
-        return result;
     };
 
     function generateChunks() {
@@ -235,29 +160,98 @@ class IntelHexParser {
             };
         };
     };
+
+    function _hexToInt(str) {
+        // Converts a string of hexadecimal digits to an integer.
+
+        local hex = 0;
+
+        foreach (ch in str) {
+            local nibble;
+
+            if (ch >= '0' && ch <= '9') {
+                nibble = (ch - '0');
+            } else if (ch >= 'A' && ch <= 'F') {
+                nibble = (ch - 'A' + 10);
+            } else if (ch >= 'a' && ch <= 'f') {
+                nibble = (ch - 'a' + 10);
+            } else {
+                throw PARSE_ERROR_MSG + "hex digit is out of range";
+            };
+            hex = (hex << 4) + nibble;
+        }
+        return hex;
+    };
+
+    function _parseRecord() {
+        // Parse Intel Hex record and return its type and contents. Move the
+        // blob's pointer to the next record.
+
+        // eat cr/lfs
+        local recordMark = null;
+        do {
+            recordMark = _fileBlob.readstring(1);
+        } while (SPACING_CHARS.find(recordMark));
+
+        if (recordMark != ":") {
+            throw PARSE_ERROR_MSG + "record mark is invalid: " + recordMark;
+        };
+
+        local recordLength = _hexToInt(_fileBlob.readstring(2));
+        local loadOffset = _hexToInt(_fileBlob.readstring(4));
+        local recordType = _fileBlob.readstring(2);
+
+        // save data position in blob and skip data by now
+        local dataPointer = _fileBlob.tell();
+        _fileBlob.seek(recordLength * 2, 'c');
+
+        local checkSum = _hexToInt(_fileBlob.readstring(2));
+        local result = {
+            "type": recordType,
+            "offset": loadOffset,
+            "data": null
+        };
+
+        switch (recordType) {
+            case RECORD_TYPE_ULBA:
+                // extended linear address record (ULBA)
+                local tempPointer = _fileBlob.tell();
+                _fileBlob.seek(dataPointer);
+                result.data = _hexToInt(_fileBlob.readstring(recordLength * 2));
+                _fileBlob.seek(tempPointer);
+                break;
+
+            case RECORD_TYPE_DATA:
+                // data record
+                local tempPointer = _fileBlob.tell();
+                _fileBlob.seek(dataPointer);
+                result.data = blob(recordLength);
+                for (local i = 0; i < recordLength; i += 1) {
+                    result.data[i] = _hexToInt(_fileBlob.readstring(2));
+                };
+                _fileBlob.seek(tempPointer);
+                break;
+        };
+
+        return result;
+    };
 };
 
 
 class DFUSTM32Agent {
-    // Firmware updater agent is responsible for:
-    // ⋅ parsing .hex or .dfu files and creating firmware blobs,
-    // ⋅ keeping account on available firmware versions,
-    // ⋅ spliting blobs on chunks,
-    // ⋅ sending chunks to device.
+    // Firmware updater agent is responsible for sending chunks
+    // to device.
 
-    static VERSION = "0.1.0";
-
-    _blobParser = null;
-    _maxBlobSize = null;
-    
     chunks = null;
 
+    _parser = null;
+
     // callbacks
-    _beforeSendBlob = null;
+    _beforeSendImage = null;
     _beforeSendChunk = null;
     _onDone = null;
 
-    constructor(maxBlobSize=32768) {
+    constructor() {
         // initialize agent
 
         const EVENT_START_FLASHING = "start-flashing";
@@ -265,17 +259,15 @@ class DFUSTM32Agent {
         const EVENT_RECEIVE_CHUNK = "receive-chunk";
         const EVENT_DONE_FLASHING = "done-flashing";
 
-        _maxBlobSize = maxBlobSize;
-
         init();
     };
 
     function init() {
-        device.on(EVENT_REQUEST_CHUNK, onRequestChunk.bindenv(this));
-        device.on(EVENT_DONE_FLASHING, onDoneFlashing.bindenv(this));
+        device.on(EVENT_REQUEST_CHUNK, _onRequestChunk.bindenv(this));
+        device.on(EVENT_DONE_FLASHING, _onDoneFlashing.bindenv(this));
     };
 
-    function setBeforeSendBlob(beforeSendBlob) {
+    function setBeforeSendImage(beforeSendImage) {
         // Set callback for the moment after all agent side
         // initialization is done, but before sending blob to
         // device.
@@ -287,7 +279,7 @@ class DFUSTM32Agent {
         // blob to device, or truey value to continue operation.
 
 
-        _beforeSendBlob = beforeSendBlob;
+        _beforeSendImage = beforeSendImage;
     };
 
     function setBeforeSendChunk(beforeSendChunk) {
@@ -318,22 +310,16 @@ class DFUSTM32Agent {
         _onDone = onDone;
     };
 
-    function _resetChunks() {
-        // Resets chunk generator
+    function sendImage(parser) {
+        // Set parser instance, then invoke its generator to split
+        // firmware into chunks and send it to the device.
 
-        chunks = _blobParser.generateChunks();
-    };
-
-    function sendBlob(blob) {
-        // invoke generator to split firmware into chunks and
-        // send it to device
-
-        _blobParser = IntelHexParser(blob);
+        _parser = parser;
         _resetChunks();
 
         // process callback
-        if (_beforeSendBlob != null) {
-            if (!_beforeSendBlob(this)) {
+        if (_beforeSendImage != null) {
+            if (!_beforeSendImage(this)) {
                 // if callback returns falsy value, stop sending blob
                 return;
             };
@@ -345,7 +331,7 @@ class DFUSTM32Agent {
         device.send(EVENT_START_FLASHING, null);
     };
 
-    function onRequestChunk(_) {
+    function _onRequestChunk(_) {
         // EVENT_REQUEST_CHUNK handler
 
         local chunk = resume chunks;
@@ -356,7 +342,7 @@ class DFUSTM32Agent {
         device.send(EVENT_RECEIVE_CHUNK, chunk);
     };
 
-    function onDoneFlashing(status) {
+    function _onDoneFlashing(status) {
         // EVENT_DONE_FLASHING handler
 
         if (_onDone != null) {
@@ -364,4 +350,13 @@ class DFUSTM32Agent {
         };
     };
 
+    function _resetChunks() {
+        // Resets chunk generator
+
+        if (_parser == null) {
+            throw ("No parser is set. Forgot to call `sendImage()`?");
+        };
+
+        chunks = _parser.generateChunks();
+    };
 }

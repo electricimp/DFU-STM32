@@ -74,6 +74,89 @@ class STM32USARTPort {
         _send = blob(1);
     };
 
+    function connect() {
+        // Connects to the MCU's bootloader via serial port.
+
+        _usartPort.configure(_usartDataRate, 8, PARITY_EVEN, 1, NO_CTSRTS);
+
+        local reply = -1;
+
+        _sendByte(USART_SYNC);
+        _ack();
+
+        local getResult = __get();
+        server.log("Bootloader version: " + getResult[0]);
+
+        // determine supported erase command
+        if (getResult[1].find(USART_CMD_EXT_ERASE) != null) {
+            _extendedErase = true;
+        };
+        if (getResult[1].find(USART_CMD_ERASE) != null) {
+            _extendedErase = false;
+        };
+        if (_extendedErase == null) {
+            throw "Erase commands are not supported by the bootloader.";
+        };
+    };
+
+    function erase(sector) {
+        // Selects proper method of erasing one sector of the MCU's
+        // internal Flash ROM.
+
+        server.log(format("Erasing Flash ROM sector 0x%04x", sector));
+
+        if (_extendedErase) {
+            _extErase(sector);
+        } else {
+            _erase(sector);
+        };
+    };
+
+    function bulkErase() {
+        // Selects proper method of bulk erasing the MCU's internal
+        // Flash ROM.
+
+        server.log("Erasing Flash ROM");
+
+        if (_extendedErase) {
+            _extBulkErase();
+        } else {
+            _bulkErase();
+        };
+    };
+
+    function write(address, data) {
+        // Write any volume of data blob to the MCU's internal memory,
+        // starting from given address.
+
+        data.seek(0);
+
+        while (!data.eos()) {
+
+            // limit the size of data being writen to 256 bytes (AN3155)
+            local divider = data.len();
+
+            if (divider > 256) {
+                divider = 256;
+            };
+
+            // write data
+            _write256(address, data.readblob(divider));
+
+            // correct address and remaining data
+            if (!data.eos()) {
+                data = data.readblob(data.len());
+                address += divider;
+            };
+        };
+    };
+
+    function disconnect() {
+        // Frees USART port.
+
+        _usartPort.disable();
+    };
+
     function _xorChecksum(data) {
         // Calculates xor checksum for a data blob.
 
@@ -132,31 +215,6 @@ class STM32USARTPort {
 
             default:
                 throw format("Unexpected data: 0x%02x", reply);
-        };
-    };
-
-    function connect() {
-        // Connects to the MCU's bootloader via serial port.
-
-        _usartPort.configure(_usartDataRate, 8, PARITY_EVEN, 1, NO_CTSRTS);
-
-        local reply = -1;
-
-        _sendByte(USART_SYNC);
-        _ack();
-
-        local getResult = __get();
-        server.log("Bootloader version: " + getResult[0]);
-
-        // determine supported erase command
-        if (getResult[1].find(USART_CMD_EXT_ERASE) != null) {
-            _extendedErase = true;
-        };
-        if (getResult[1].find(USART_CMD_ERASE) != null) {
-            _extendedErase = false;
-        };
-        if (_extendedErase == null) {
-            throw "Erase commands are not supported by the bootloader.";
         };
     };
 
@@ -251,32 +309,6 @@ class STM32USARTPort {
         _ack();
     };
 
-    function erase(sector) {
-        // Selects proper method of erasing one sector of the MCU's
-        // internal Flash ROM.
-
-        server.log(format("Erasing Flash ROM sector 0x%04x", sector));
-
-        if (_extendedErase) {
-            _extErase(sector);
-        } else {
-            _erase(sector);
-        };
-    };
-
-    function bulkErase() {
-        // Selects proper method of bulk erasing the MCU's internal
-        // Flash ROM.
-
-        server.log("Erasing Flash ROM");
-
-        if (_extendedErase) {
-            _extBulkErase();
-        } else {
-            _bulkErase();
-        };
-    };
-
     function _write256(address, dataBlob) {
         // Writes up to 256 bytes into MCU's memory
         // (straightforward implementation of the bootloader's
@@ -314,38 +346,6 @@ class STM32USARTPort {
         if (_doubleAckOnWrite) {
             _ack();
         };
-    };
-
-    function write(address, data) {
-        // Write any volume of data blob to the MCU's internal memory,
-        // starting from given address.
-
-        data.seek(0);
-
-        while (!data.eos()) {
-
-            // limit the size of data being writen to 256 bytes (AN3155)
-            local divider = data.len();
-
-            if (divider > 256) {
-                divider = 256;
-            };
-
-            // write data
-            _write256(address, data.readblob(divider));
-
-            // correct address and remaining data
-            if (!data.eos()) {
-                data = data.readblob(data.len());
-                address += divider;
-            };
-        };
-    };
-
-    function disconnect() {
-        // Frees USART port.
-
-        _usartPort.disable();
     };
 }
 

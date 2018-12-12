@@ -68,7 +68,7 @@ function advanceCounter(stm32, chunk) {
 };
 
 local dfu_stm32 = DFUSTM32Agent();
-dfu_stm32.setBeforeSendBlob(determineFirmwareSize);
+dfu_stm32.setBeforeSendImage(determineFirmwareSize);
 dfu_stm32.setBeforeSendChunk(advanceCounter);
 dfu_stm32.setOnDone(setStatus);
 
@@ -112,7 +112,9 @@ function updateFirmware(request, response) {
                 local firmwareBlob = blob();
                 firmwareBlob.writestring(request.body);
                 firmwareBlob.seek(0);
-                dfu_stm32.sendBlob(firmwareBlob);
+
+                local parser = IntelHexParser(firmwareBlob);
+                dfu_stm32.sendImage(parser);
             } else {
                 responseCode = 400;
                 responseBody.message = "Unknown firmware delivery method.";
