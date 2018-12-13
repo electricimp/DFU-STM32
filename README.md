@@ -247,3 +247,15 @@ Writes the chunk to the MCU's memory.
 Reboots MCU to normal mode.
 
 ### Events
+DFU-STM32 uses Electric Imp's [messaging system](https://developer.electricimp.com/examples/deviceagent) for agent-device communication. The library therefore defines a number of messages.
+
+| Message name | Direction | Payload | Meaning |
+| --- | --- | --- | --- |
+| `EVENT_START_FLASHING` | agent → device | none | The agent have a new firmware image and want to make sure that the device is ready to flash it. |
+| `EVENT_REQUEST_CHUNK` | device → agent | none | The device is waiting for a chunk of firmware data. |
+| `EVENT_RECEIVE_CHUNK` | agent → device | `table`: chunk | The agent is sending a chunk to the device. Chunk format is described [here](#setbeforesendchunkcallback). |
+| `EVENT_DONE_FLASHING` | device → agent | `string`: status | Either the device is finished the process of flashing the firmware and returned back to normal mode, or the process was aborted, depending on `status`. The standard statuses are described [here](#setbeforedonecallback). |
+
+DFU-STM32's working process can be described by the following diagram.
+
+![diagram](https://raw.githubusercontent.com/nobitlost/DFU-STM32/develop/docs/diagram1.png)
