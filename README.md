@@ -14,7 +14,7 @@ The library has a modular structure that allows you to adapt it to a wide range 
         - [setBeforeSendImage()](#setbeforesendimagecallback),
         - [setBeforeSendChunk()](#setbeforesendchunkcallback),
         - [setOnDone()](#setondonecallback),
-        - [sendImage()](#sendimageparser),
+        - [sendImage()](#sendimageparser).
 - Device side:
     - [port class](#port-class):
         - [connect()](#connect),
@@ -32,8 +32,8 @@ The library has a modular structure that allows you to adapt it to a wide range 
         - [invokeBootloader()](#invokebootloader),
         - [onReceiveChunk()](#onreceivechunkchunk),
         - [writeChunk()](#writechunkchunk),
-        - [dismissBootloader()](#dismissbootloader),
-        - [events](#events).
+        - [dismissBootloader()](#dismissbootloader).
+- [Events](#events).
 
 ## File parser class
 Translates file of a certain format (Intel Hex, DfuSe, binary, et c.), into chunks with binary data. Each chunk should contain:
@@ -246,7 +246,7 @@ Writes the chunk to the MCU's memory.
 ### dismissBootloader()
 Reboots MCU to normal mode.
 
-### Events
+## Events
 DFU-STM32 uses Electric Imp's [messaging system](https://developer.electricimp.com/examples/deviceagent) for agent-device communication. The library therefore defines a number of messages.
 
 | Message name | Direction | Payload | Meaning |
