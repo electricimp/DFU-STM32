@@ -58,9 +58,9 @@ class STM32USARTPort {
         const USART_CMD_WRITE = 0x31;
 
         const USART_DEFAULT_DATA_RATE = 115200;
-        const USART_POLL_INTERVAL = 0.01
+        const USART_POLL_INTERVAL = 0.01;
         // Flash erase operations can take a long time
-        const USART_POLL_RETRIES = 3000
+        const USART_POLL_RETRIES = 3000;
 
         _usartPort = usartPort;
         _doubleAckOnWrite = doubleAckOnWrite;
