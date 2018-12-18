@@ -392,9 +392,9 @@ class DFUSTM32Device {
         const EVENT_DONE_FLASHING = "done-flashing";
 
         // time to hold reset
-        const RESET_DELAY = 0.01
+        const RESET_DELAY = 0.01;
         // time for bootloader initialization
-        const BOOTLOADER_DELAY = 0.1
+        const BOOTLOADER_DELAY = 0.1;
 
         const STATUS_OK = "OK";
         const STATUS_ABORTED = "Aborted";
