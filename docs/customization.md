@@ -5,17 +5,17 @@ The library has a modular structure that allows you to adapt it to a wide range 
 Main DFU-STM32 classes have a set of callbacks designed to simplify the extension of library functionality. These callbacks are:
 
 - On agent:
-    - [beforeSendImage](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforesendimagecallback),
-    - [beforeSendChunk](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforesendchunkcallback),
-    - [onDone](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setondonecallback),
+    - [beforeSendImage](./reference.md#setbeforesendimagecallback),
+    - [beforeSendChunk](./reference.md#setbeforesendchunkcallback),
+    - [onDone](./reference.md#setondonecallback),
 - on device:
-    - [beforeStart](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforestartcallback),
-    - [beforeInvoke](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforeinvokecallback),
-    - [onReceiveChunk](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setonreceivechunkcallback),
-    - [beforeDismiss](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforedismisscallback),
-    - [beforeDone](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforedonecallback).
+    - [beforeStart](./reference.md#setbeforestartcallback),
+    - [beforeInvoke](./reference.md#setbeforeinvokecallback),
+    - [onReceiveChunk](./reference.md#setonreceivechunkcallback),
+    - [beforeDismiss](./reference.md#setbeforedismisscallback),
+    - [beforeDone](./reference.md#setbeforedonecallback).
 
-The [example](https://github.com/nobitlost/DFU-STM32/blob/develop/README.md#example) shows how to use agent callbacks to make a progress indicator.
+The [example](../README.md#example) shows how to use agent callbacks to make a progress indicator.
 
 Other legitimate use cases of callbacks might be:
 - additional firmware validation,
@@ -31,9 +31,9 @@ To implement a new firmware file format, you must create a class with the follow
   - a chunk size in bytes (`int`), which optimally should have a reasonable default value, i.e. 4096.
 
   If the firmware file has not enough info on how to flash it, you must provide additional constructor arguments. For example, when parsing a contigious binary file, provide a starting address,
-- `generateChunks()` − generator function, that yields chunks. Chunk format is described in the [reference](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#setbeforesendchunkcallback).
+- `generateChunks()` − generator function, that yields chunks. Chunk format is described in the [reference](./reference.md#setbeforesendchunkcallback).
 
 Firmware file format class must be able to restart chunk generation in a thread-safe manner. In other words, `generateCunks()` must always provide the same consistent result, no matter when or how many times it is called.
 
 ## Another device port
-All the mandatory methods, that the DFU-STM32 device port class must implement, are described in [its reference](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md#port-class).
+All the mandatory methods, that the DFU-STM32 device port class must implement, are described in [its reference](./reference.md#port-class).

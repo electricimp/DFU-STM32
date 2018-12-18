@@ -251,4 +251,4 @@ DFU-STM32 uses Electric Imp's [messaging system](https://developer.electricimp.c
 
 DFU-STM32's working process can be described by the following diagram.
 
-![diagram](https://raw.githubusercontent.com/nobitlost/DFU-STM32/develop/docs/diagram1.png)
+![diagram](./diagram1.png)
