@@ -1,261 +1,94 @@
 # DFU-STM32
+
+## Common information
 This library is aimed to facilitate the process of updating the firmware of the certain types of custom peripheral controllers (MCUs), working in tandem with the Imp modules.
 
 There may be various reasons to use external MCUs in Imp-enabled devices. Most probable are:
 - the project requires a high number of peripheral connections, that exceeds the capabilities of an Imp module,
 - an Imp module is used to retrofit the existing device with cloud connectivity, while original (legacy) MCU remains in place, performing its initial tasks.
 
-The library has a modular structure that allows you to adapt it to a wide range of MCUs. Here is a layout of DFU-STM32's classes and their mandatory methods.
-
-- Agent side:
-    - [file parser class](#file-parser-class):
-        - [generateChunks()](#generatechunks),
-    - [agent class](#agent-class):
-        - [setBeforeSendImage()](#setbeforesendimagecallback),
-        - [setBeforeSendChunk()](#setbeforesendchunkcallback),
-        - [setOnDone()](#setondonecallback),
-        - [sendImage()](#sendimageparser).
-- Device side:
-    - [port class](#port-class):
-        - [connect()](#connect),
-        - [erase()](#erasesector),
-        - [bulkErase()](#bulkerase),
-        - [write()](#writeaddress-data),
-        - [disconnect()](#disconnect),
-    - [device class](#device-class):
-        - [setBeforeStart()](#setbeforestartcallback),
-        - [setBeforeInvoke()](#setbeforeinvokecallback),
-        - [setOnReceiveChunk()](#setonreceivechunkcallback),
-        - [setBeforeDismiss()](#setbeforedismisscallback),
-        - [setBeforeDone()](#setbeforedonecallback),
-        - [onStartFlashing()](#onstartflashingdata),
-        - [invokeBootloader()](#invokebootloader),
-        - [onReceiveChunk()](#onreceivechunkchunk),
-        - [writeChunk()](#writechunkchunk),
-        - [dismissBootloader()](#dismissbootloader).
-- [Events](#events).
-
-## File parser class
-Translates file of a certain format (Intel Hex, DfuSe, binary, et c.), into chunks with binary data. Each chunk should contain:
-- a blob of data with a fixed maximum size,
-- an address at which the data will be stored in MCU's memory.
-
-When no data left in file, parser must return `null`.
-
-At the moment, the only parser class implemented is *IntelHexParser*. Intel Hex files specification is available [here](https://web.archive.org/web/20160607224738/http://microsym.com/editor/assets/intelhex.pdf). This format is well supported by GNU compiler suite, ARM Keil, IntelliJ CLion, et c. It is simple, text-oriented, and suitable for many 8-, 16-, or 32-bit microcontrollers.
-
-### Constructor: FileParser(*fileBlob[, chunkSize]*)
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| fileBlob | blob | yes | `blob` or blob-like object, containing the firmware file. |
-| chunkSize | int | no | Maximum chunk size, defaults to 4KB. |
-
-### generateChunks()
-A [generator function](https://developer.electricimp.com/squirrel/squirrelcrib#generator-functions) that yields chunks.
-
-## Agent class
-Agent class, DFUSTM32Agent, is responsible for sending chunks to the device side, using Imp API messages.
-
-### Constructor: DFUSTM32Agent()
-Set up message handlers.
-
-### setBeforeSendImage(*callback*)
-Set callback for the moment after all agent side initialization is done, but before sending firmware to device.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameter:
-- DFUSTM32Agent class instance.
-
-Callback should return falsey value to abort sending blob to device, or truey value to continue operation.
-
-### setBeforeSendChunk(*callback*)
-Set callback for the moment before sending chunk to device.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameters:
-- DFUSTM32Agent class instance;
-- chunk (either table with target address and blob of binary data, or null − end of transfer).
-
-No return value specified.
-
-### setOnDone(*callback*)
-Set callback for the end of the agent-device operation.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameters:
-- DFUSTM32Agent class instance;
-- client status string. By default it is either "OK" or "Aborted", but the range of statuses can be extended on device's side.
-
-No return value specified.
-
-### sendImage(*parser*)
-Set parser instance, then invoke its generator function [generateChunks()](#generatechunks) to split firmware into chunks and send it to the device.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| parser | `object` | yes | Object of the parser class. |
-
-## Port class
-Implements an access to MCU's bootloader (initialization and commands issuing) over a hardware-defined communication lane (USART, SPI, CAN, USB, et c.).
-
-At the moment, the only port class implemented is *STM32USARTPort*. It allows to access STM32 factory bootloader over USART in asynchronous mode.
-
-The bootloader commands are explained by the ST Micro in the document [AN3155](http://www.st.com/web/en/resource/technical/document/application_note/CD00264342.pdf). Some details of the initialization of the bootloader in different families and models of STM32 microcontrollers are described in [AN2602](http://www.st.com/st-web-ui/static/active/en/resource/technical/document/application_note/CD00167594.pdf).
-
-The following reference uses `STM32USARTPort` as an example of port class. All the following methods described in this topic must be implemented in any other port class.
-
-### Constructor: STM32USARTPort(*usartPort[, usartDataRate][, doubleAckOnWrite]*)
-Constructor parameters:
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| usartPort | `object` | yes | Imp device serial port, instance of [uart](https://developer.electricimp.com/api/hardware/uart) class. |
-| usartDataRate | `int` | no | Serial communication baud rate. Values from 1200 to 115200 are supported by Imp. Default is 115200. |
-| doubleAckOnWrite | `bool` | no | This parameter is specific to some STM32 devices. Default is `false`. |
-
-### connect()
-Connects to the MCU's bootloader via serial port.
-
-### erase(sector)
-Selects proper method of erasing one sector of the MCU's internal Flash ROM.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| sector | `int` | yes | An ID of sector to erase. Refer to you specific microcontroller's datasheet for details. |
-
-### bulkErase()
-Selects proper method of bulk erasing the MCU's internal Flash ROM.
-
-### write(*address, data*)
-Write any volume of data to the MCU's internal memory, starting from given address.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| address | `int` | yes | Starting address. |
-| data | `blob` | yes | Bytes of data to be written. |
-
-### disconnect()
-Frees USART port.
-
-## Device class
-DFU-STM32 device class implements the method of entering and exiting the STM32 built-in bootloader. When the bootloader is made active, the device class is providing the port instance with the data sent by the agent.
-
-### Constructor: DFUSTM32Device(*port[, flashSectorMap][, bootModePin][, resetPin]*)
-Constructor parameters:
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| port | `object` | yes | An instance of the device port class. |
-| flashSectorMap | `table` | no | A map of MCU's Flash ROM. Have the following form: `{sector number: [first byte address, last byte address]}`. If not set, the bulk erase will be performed, which is slow and not suitable in many cases. If set empty, no erase will be performed. |
-| bootModePin | `object` | no | Object of class [pin](https://developer.electricimp.com/api/hardware/pin). Sets to logical `1` to enter the bootloader, resets to `0` to exit back to normal mode. |
-| resetPin | `object` | no | Object of class [pin](https://developer.electricimp.com/api/hardware/pin). The hardware GPIO pin behind this object must be connected to MCU's `nrst` signal. |
-
-To implement some other way of entering/exiting the bootloader, you must register the [beforeInvoke](#setbeforeinvokebeforeinvoke) and [beforeDismiss](#setbeforedismissbeforedismiss) callbacks and put your hardware-specific code there. In this case, `bootModePin` and `resetPin` constructor parameters are optional.
-
-### setBeforeStart(*callback*)
-Set callback for the time just before the process of flashing starts. It can be used to check power source, ask user permission, et c.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameter:
-- DFUSTM32Device class instance.
-
-Callback should return falsey value to abort flashing, or truey value to continue operation.
-
-### setBeforeInvoke(*callback*)
-Set callback to replace or prepend the standard mechanism of entering the bootloader on the MCU. Fires right after `_beforeStart`. Have its counterpart callback, `_beforeDismiss`.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameter:
-- DFUSTM32Device class instance.
-
-Callback should return falsey value to skip the standard mechanism and proceed to bootloader connecting, or truey value to enter the bootloader mode by manipulating reset and bootX pins.
-
-### setOnReceiveChunk(*callback*)
-Set callback for receiving chunk from agent.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameters:
-- DFUSTM32Device class instance;
-- chunk (either table with target address and blob of binary data, or null − end of transfer).
-
-Callback should return truey value to proceed or falsey value to abort writing data and proceed to finalize flashing and switch MCU into normal mode.
-
-### setBeforeDismiss(*callback*)
-Set callback to replace or prepend the standard mechanism of leaving the bootloader. Fires before `_beforeDone`.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| callback | `function` | yes | |
-
-Callback parameter:
-- DFUSTM32Device class instance.
-
-Callback should return falsey value to skip the standard mechanism, or truey value to proceed to switching MCU to the normal mode by manipulating reset and bootX pins.
-
-### setBeforeDone(*callback*)
-Set callback for the end of device operation. Use this chance to perform extra cleanup, extend status, et c.
-
-Callback parameters:
-- `DFUSTM32Device` class instance;
-- default device status: either `STATUS_OK` or `STATUS_ABORTED`.
-
-This callback should return device status string.
-
-### onStartFlashing(*data*)
-EVENT_START_FLASHING handler.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| data | `table` | yes | Not needed. |
-
-### invokeBootloader()
-Sets bootX pin(s) and pull reset or issue some command to MCU for reboot itself into the bootloader mode.
-
-### onReceiveChunk(*chunk*)
-EVENT_RECEIVE_CHUNK handler.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| chunk | `table` | yes | Data chunk. |
-
-### writeChunk(*chunk*)
-Writes the chunk to the MCU's memory.
-
-| Parameter | Data&nbsp;Type | Required? | Description |
-| --- | --- | --- | --- |
-| chunk | `table` | yes | Data chunk. |
-
-### dismissBootloader()
-Reboots MCU to normal mode.
-
-## Events
-DFU-STM32 uses Electric Imp's [messaging system](https://developer.electricimp.com/examples/deviceagent) for agent-device communication. The library therefore defines a number of messages.
-
-| Message name | Direction | Payload | Meaning |
-| --- | --- | --- | --- |
-| `EVENT_START_FLASHING` | agent → device | none | The agent have a new firmware image and want to make sure that the device is ready to flash it. |
-| `EVENT_REQUEST_CHUNK` | device → agent | none | The device is waiting for a chunk of firmware data. |
-| `EVENT_RECEIVE_CHUNK` | agent → device | `table`: chunk | The agent is sending a chunk to the device. Chunk format is described [here](#setbeforesendchunkcallback). |
-| `EVENT_DONE_FLASHING` | device → agent | `string`: status | Either the device is finished the process of flashing the firmware and returned back to normal mode, or the process was aborted, depending on `status`. The standard statuses are described [here](#setbeforedonecallback). |
-
-DFU-STM32's working process can be described by the following diagram.
-
-![diagram](https://raw.githubusercontent.com/nobitlost/DFU-STM32/develop/docs/diagram1.png)
+At the moment, this library supports:
+- any Imp module or development board with at least one UART lane and two GPIO pins available. The library was extensively tested with [April](https://developer.electricimp.com/hardware/resources/reference-designs/april) board,
+- STM32L0, STM32L1, STM32L4, STM32F0, STM32F1, STM32F2, STM32F3, STM32F4, STM32F7 series of microcontrollers. Was tested with STM32F412ZGT6 MCU (Nucleo-F412ZG development board),
+- STM32 standard (built-in) bootloader,
+- USART port in asynchronous mode,
+- hardware method of entering/exiting the bootloader,
+- firmware in Intel Hex format.
+
+## Quick start
+1. Include necessary libraries in your project: put 
+   ```
+   #require "DFU-STM32.agent.lib.nut:0.1.0"
+   ```
+   and
+   ```
+   #require "DFU-STM32.device.lib.nut:0.1.0"
+   ```
+   to the top of your agent and device code, respectively.
+2. On device side:
+    1. Create a port instance with an Imp [UART device](https://developer.electricimp.com/api/hardware/uart) as an argument:
+    ```
+    local port = STM32USARTPort(hardware.uart1289);
+    ```
+    
+    2. (Optional.) Create an MCU's internal Flash ROM sector map. You can find the details on the sectors' size, physical addresses and enumeration scheme in your MCU's reference manual. For example, this is the sector map of the STM32F412 series microcontrollers:
+    ```
+    local STM32F412FlashMap = {};
+    STM32F412FlashMap[0] <- [0x08000000, 0x08003fff];
+    STM32F412FlashMap[1] <- [0x08004000, 0x08007fff];
+    STM32F412FlashMap[2] <- [0x08008000, 0x0800bfff];
+    STM32F412FlashMap[3] <- [0x0800c000, 0x0800ffff];
+    STM32F412FlashMap[4] <- [0x08010000, 0x0801ffff];
+    STM32F412FlashMap[5] <- [0x08020000, 0x0803ffff];
+    STM32F412FlashMap[6] <- [0x08040000, 0x0805ffff];
+    STM32F412FlashMap[7] <- [0x08060000, 0x0807ffff];
+    STM32F412FlashMap[8] <- [0x08080000, 0x0809ffff];
+    STM32F412FlashMap[9] <- [0x080a0000, 0x080bffff];
+    STM32F412FlashMap[10] <- [0x080c0000, 0x080dffff];
+    STM32F412FlashMap[11] <- [0x080e0000, 0x080fffff];
+    ```
+    As you can see, STM32F412 series Flash ROM is divided into 12 sectors, enumerated from 0 to 11. The first four sectors have a size of 16 KBytes, the next sector − 64 KBytes, and the last 7 sectors − 128 KBytes each.
+
+    3. Create the DFU-STM32 device object with the following parameters:
+        - port object,
+        - Flash ROM map,
+        - mode setting pin. Must be connected to the `bootX` pin of the MCU,
+        - reset pin. Must be connected to the MCU's `nrst` pin.
+      ```
+      local dfu_stm32 = DFUSTM32Device(
+          port, STM32F412FlashMap, hardware.pin5, hardware.pin7
+      );
+      ```
+
+      If you skip the sector map or pass `null` instead, the device will perform a bulk Flash ROM erase. Bulk erasing can take a long time.
+
+      You can also skip the last two parameters (pins), if you intend to use software method of entering/exiting the bootloader. See [customization guide](#customization-guide) on how to do it.
+
+3. On agent side:
+   1. Create a DFU-STM32 object:
+   ```
+   local dfu_stm32 = DFUSTM32Agent();
+   ```
+   2. Create an instance of the file parser with the `blob` or blob-like object, containing the firmware file:
+   ```
+   local parser = IntelHexParser(firmwareBlob);
+   ```
+   3. Parse image and send it to the device:
+   ```
+   dfu_stm32.sendImage(parser);
+   ```
+
+## Library reference
+You can find a layout of DFU-STM32's classes and their mandatory methods in the [reference](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md).
+
+## Example
+The agent part of an example is featuring a simple web service. The endpoint URL is *"https://<span></span>agent.electricimp.com/&lt;Agent ID&gt;/firmware/update"*. It supports two verbs:
+- `POST` takes a request body as a firmware (byte stream), parses it, and sends it to the device,
+- `GET` returns a current agent status (either "Busy" or "Idle").
+
+The agent part also has a simple progress indicator. It reports a current progress to a system log each time the data chunk goes to the device.
+
+The device part of the example is pretty minimal.
+
+## Customization guide
+The library has a modular structure that allows you to adapt it to a wide range of firmware file formats, microcontrollers, and communication ports and protocols.
