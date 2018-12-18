@@ -208,12 +208,12 @@ Set callback for the end of device operation. Use this chance to perform extra c
 
 Callback parameters:
 - `DFUSTM32Device` class instance;
-- default device status: either `STATUS_OK` or `STATUS_ABORTED`.
+- default device status: either `DFUSTM32_STATUS_OK` or `DFUSTM32_STATUS_ABORTED`.
 
 This callback should return device status string.
 
 ### onStartFlashing(*data*)
-EVENT_START_FLASHING handler.
+DFUSTM32_EVENT_START_FLASHING handler.
 
 | Parameter | Data&nbsp;Type | Required? | Description |
 | --- | --- | --- | --- |
@@ -223,7 +223,7 @@ EVENT_START_FLASHING handler.
 Sets bootX pin(s) and pull reset or issue some command to MCU for reboot itself into the bootloader mode.
 
 ### onReceiveChunk(*chunk*)
-EVENT_RECEIVE_CHUNK handler.
+DFUSTM32_EVENT_RECEIVE_CHUNK handler.
 
 | Parameter | Data&nbsp;Type | Required? | Description |
 | --- | --- | --- | --- |
@@ -244,10 +244,10 @@ DFU-STM32 uses Electric Imp's [messaging system](https://developer.electricimp.c
 
 | Message name | Direction | Payload | Meaning |
 | --- | --- | --- | --- |
-| `EVENT_START_FLASHING` | agent → device | none | The agent have a new firmware image and want to make sure that the device is ready to flash it. |
-| `EVENT_REQUEST_CHUNK` | device → agent | none | The device is waiting for a chunk of firmware data. |
-| `EVENT_RECEIVE_CHUNK` | agent → device | `table`: chunk | The agent is sending a chunk to the device. Chunk format is described [here](#setbeforesendchunkcallback). |
-| `EVENT_DONE_FLASHING` | device → agent | `string`: status | Either the device is finished the process of flashing the firmware and returned back to normal mode, or the process was aborted, depending on `status`. The standard statuses are described [here](#setbeforedonecallback). |
+| `DFUSTM32_EVENT_START_FLASHING` | agent → device | none | The agent have a new firmware image and want to make sure that the device is ready to flash it. |
+| `DFUSTM32_EVENT_REQUEST_CHUNK` | device → agent | none | The device is waiting for a chunk of firmware data. |
+| `DFUSTM32_EVENT_RECEIVE_CHUNK` | agent → device | `table`: chunk | The agent is sending a chunk to the device. Chunk format is described [here](#setbeforesendchunkcallback). |
+| `DFUSTM32_EVENT_DONE_FLASHING` | device → agent | `string`: status | Either the device is finished the process of flashing the firmware and returned back to normal mode, or the process was aborted, depending on `status`. The standard statuses are described [here](#setbeforedonecallback). |
 
 DFU-STM32's working process can be described by the following diagram.
 

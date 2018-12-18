@@ -47,26 +47,26 @@ class STM32USARTPort {
         // ⋅ doubleAckOnWrite − bootloader expects two acknoledge
         //   sequences on write (true) or just one (false, default).
 
-        const USART_SYNC = 0x7f;
-        const USART_ACK = 0x79;
-        const USART_NO_ACK = 0x1f;
+        const DFUSTM32_USART_SYNC = 0x7f;
+        const DFUSTM32_USART_ACK = 0x79;
+        const DFUSTM32_USART_NO_ACK = 0x1f;
 
-        const USART_CMD_GET = 0x00;
-        const USART_CMD_GET_VERSION = 0x01;
-        const USART_CMD_ERASE = 0x43;
-        const USART_CMD_EXT_ERASE = 0x44;
-        const USART_CMD_WRITE = 0x31;
+        const DFUSTM32_USART_CMD_GET = 0x00;
+        const DFUSTM32_USART_CMD_GET_VERSION = 0x01;
+        const DFUSTM32_USART_CMD_ERASE = 0x43;
+        const DFUSTM32_USART_CMD_EXT_ERASE = 0x44;
+        const DFUSTM32_USART_CMD_WRITE = 0x31;
 
-        const USART_DEFAULT_DATA_RATE = 115200;
-        const USART_POLL_INTERVAL = 0.01;
+        const DFUSTM32_USART_DEFAULT_DATA_RATE = 115200;
+        const DFUSTM32_USART_POLL_INTERVAL = 0.01;
         // Flash erase operations can take a long time
-        const USART_POLL_RETRIES = 3000;
+        const DFUSTM32_USART_POLL_RETRIES = 3000;
 
         _usartPort = usartPort;
         _doubleAckOnWrite = doubleAckOnWrite;
 
         if (usartDataRate == null) {
-            _usartDataRate = USART_DEFAULT_DATA_RATE;
+            _usartDataRate = DFUSTM32_USART_DEFAULT_DATA_RATE;
         } else {
             _usartDataRate = usartDataRate;
         };
@@ -81,17 +81,17 @@ class STM32USARTPort {
 
         local reply = -1;
 
-        _sendByte(USART_SYNC);
+        _sendByte(DFUSTM32_USART_SYNC);
         _ack();
 
         local getResult = __get();
         server.log("Bootloader version: " + getResult[0]);
 
         // determine supported erase command
-        if (getResult[1].find(USART_CMD_EXT_ERASE) != null) {
+        if (getResult[1].find(DFUSTM32_USART_CMD_EXT_ERASE) != null) {
             _extendedErase = true;
         };
-        if (getResult[1].find(USART_CMD_ERASE) != null) {
+        if (getResult[1].find(DFUSTM32_USART_CMD_ERASE) != null) {
             _extendedErase = false;
         };
         if (_extendedErase == null) {
@@ -190,12 +190,12 @@ class STM32USARTPort {
 
         local reply;
 
-        for (local i = 0; i < USART_POLL_RETRIES; i += 1) {
+        for (local i = 0; i < DFUSTM32_USART_POLL_RETRIES; i += 1) {
             reply = _usartPort.read();
             if (reply != -1) {
                 return reply;
             };
-            imp.sleep(USART_POLL_INTERVAL);
+            imp.sleep(DFUSTM32_USART_POLL_INTERVAL);
         };
 
         throw "Reading from USART timed out!";
@@ -207,10 +207,10 @@ class STM32USARTPort {
         local reply = _readByte();
 
         switch (reply) {
-            case USART_ACK:
+            case DFUSTM32_USART_ACK:
                 return;
 
-            case USART_NO_ACK:
+            case DFUSTM32_USART_NO_ACK:
                 throw "Not acknowledged!";
 
             default:
@@ -222,7 +222,7 @@ class STM32USARTPort {
         // Issues Get command. Returns bootloader version and
         // a list of supported commands.
 
-        _sendCommand(USART_CMD_GET);
+        _sendCommand(DFUSTM32_USART_CMD_GET);
         _ack();
 
         // the number of bytes to follow – 1 except current
@@ -247,7 +247,7 @@ class STM32USARTPort {
     function _erase(sector) {
         // Short erase implementation.
         
-        _sendCommand(USART_CMD_ERASE);
+        _sendCommand(DFUSTM32_USART_CMD_ERASE);
         _ack();
 
         sector = sector & 0xff;
@@ -266,7 +266,7 @@ class STM32USARTPort {
     function _bulkErase() {
         // Short bulk erase implementation.
 
-        _sendCommand(USART_CMD_ERASE);
+        _sendCommand(DFUSTM32_USART_CMD_ERASE);
         _ack();
 
         _sendByte(0xff);
@@ -277,7 +277,7 @@ class STM32USARTPort {
     function _extErase(sector) {
         // Extended erase implementation.
 
-        _sendCommand(USART_CMD_EXT_ERASE);
+        _sendCommand(DFUSTM32_USART_CMD_EXT_ERASE);
         _ack();
 
         // erase one sector
@@ -299,7 +299,7 @@ class STM32USARTPort {
     function _extBulkErase() {
         // Extended bulk erase implementation.
 
-        _sendCommand(USART_CMD_EXT_ERASE);
+        _sendCommand(DFUSTM32_USART_CMD_EXT_ERASE);
         _ack();
 
         // erase one sector
@@ -319,7 +319,7 @@ class STM32USARTPort {
             throw "Can not write so much as " + dataSize + " bytes in one go.";
         };
 
-        _sendCommand(USART_CMD_WRITE);
+        _sendCommand(DFUSTM32_USART_CMD_WRITE);
         _ack();
 
         // prepare big-endian buffer with address bytes
@@ -386,18 +386,18 @@ class DFUSTM32Device {
         // ⋅ resetPin − GPIO pin that resets MCU when driven low. Must be
         //   open-drained.
 
-        const EVENT_START_FLASHING = "start-flashing";
-        const EVENT_REQUEST_CHUNK = "request-chunk";
-        const EVENT_RECEIVE_CHUNK = "receive-chunk";
-        const EVENT_DONE_FLASHING = "done-flashing";
+        const DFUSTM32_EVENT_START_FLASHING = "start-flashing";
+        const DFUSTM32_EVENT_REQUEST_CHUNK = "request-chunk";
+        const DFUSTM32_EVENT_RECEIVE_CHUNK = "receive-chunk";
+        const DFUSTM32_EVENT_DONE_FLASHING = "done-flashing";
 
         // time to hold reset
-        const RESET_DELAY = 0.01;
+        const DFUSTM32_RESET_DELAY = 0.01;
         // time for bootloader initialization
-        const BOOTLOADER_DELAY = 0.1;
+        const DFUSTM32_BOOTLOADER_DELAY = 0.1;
 
-        const STATUS_OK = "OK";
-        const STATUS_ABORTED = "Aborted";
+        const DFUSTM32_STATUS_OK = "OK";
+        const DFUSTM32_STATUS_ABORTED = "Aborted";
 
         _port = port;
         _bootModePin = bootModePin;
@@ -411,8 +411,8 @@ class DFUSTM32Device {
     };
 
     function init() {
-        agent.on(EVENT_START_FLASHING, onStartFlashing.bindenv(this));
-        agent.on(EVENT_RECEIVE_CHUNK, onReceiveChunk.bindenv(this));
+        agent.on(DFUSTM32_EVENT_START_FLASHING, onStartFlashing.bindenv(this));
+        agent.on(DFUSTM32_EVENT_RECEIVE_CHUNK, onReceiveChunk.bindenv(this));
     };
 
     function setBeforeStart(beforeStart) {
@@ -484,8 +484,8 @@ class DFUSTM32Device {
         //
         // Callback parameter:
         // ⋅ DFUSTM32Device class instance;
-        // ⋅ default device status: either STATUS_OK or
-        //   STATUS_ABORTED.
+        // ⋅ default device status: either DFUSTM32_STATUS_OK
+        //   or DFUSTM32_STATUS_ABORTED.
         //
         // Callback should return device status string.
 
@@ -493,13 +493,16 @@ class DFUSTM32Device {
     };
 
     function onStartFlashing(_) {
-        // EVENT_START_FLASHING handler
+        // DFUSTM32_EVENT_START_FLASHING handler
 
         if (_beforeStart == null || _beforeStart(this)) {
             invokeBootloader();
-            agent.send(EVENT_REQUEST_CHUNK, null);
+            agent.send(DFUSTM32_EVENT_REQUEST_CHUNK, null);
         } else {
-            agent.send(EVENT_DONE_FLASHING, STATUS_ABORTED);
+            agent.send(
+                DFUSTM32_EVENT_DONE_FLASHING,
+                DFUSTM32_STATUS_ABORTED
+            );
         };
     };
 
@@ -526,9 +529,9 @@ class DFUSTM32Device {
             server.log("Resetting...");
             _bootModePin.write(1);
             _resetPin.write(0);
-            imp.sleep(RESET_DELAY);
+            imp.sleep(DFUSTM32_RESET_DELAY);
             _resetPin.write(1);
-            imp.sleep(BOOTLOADER_DELAY);
+            imp.sleep(DFUSTM32_BOOTLOADER_DELAY);
             _port.connect();
         };
         server.log("Bootloader is on.");
@@ -539,18 +542,18 @@ class DFUSTM32Device {
     };
 
     function onReceiveChunk(chunk) {
-        // EVENT_RECEIVE_CHUNK handler
+        // DFUSTM32_EVENT_RECEIVE_CHUNK handler
 
-        local status = STATUS_OK;
+        local status = DFUSTM32_STATUS_OK;
 
         if (_onReceiveChunk == null || _onReceiveChunk(this, chunk)) {
             if (chunk != null) {
                 writeChunk(chunk);
-                agent.send(EVENT_REQUEST_CHUNK, null);
+                agent.send(DFUSTM32_EVENT_REQUEST_CHUNK, null);
                 return;
             };
         } else {
-            status = STATUS_ABORTED;
+            status = DFUSTM32_STATUS_ABORTED;
         };
 
         dismissBootloader();
@@ -558,7 +561,7 @@ class DFUSTM32Device {
         if (_beforeDone != null) {
             status = _beforeDone(this, status);
         };
-        agent.send(EVENT_DONE_FLASHING, status);
+        agent.send(DFUSTM32_EVENT_DONE_FLASHING, status);
     };
 
     function writeChunk(chunk) {
@@ -609,7 +612,7 @@ class DFUSTM32Device {
             server.log("Resetting...");
             _bootModePin.write(0);
             _resetPin.write(0);
-            imp.sleep(RESET_DELAY);
+            imp.sleep(DFUSTM32_RESET_DELAY);
             _resetPin.write(1);
         };
 

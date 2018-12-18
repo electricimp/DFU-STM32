@@ -38,23 +38,27 @@ class IntelHexParser {
         // ⋅ chunkSize − (optional) size of a resulting chunk (bytes).
         //   Defaults to DEFAULT_CHUNK_SIZE.
 
-        const PARSE_ERROR_MSG = "Intel Hex Parse Error: ";
+        const DFUSTM32_PARSE_ERROR_MSG = "Intel Hex Parse Error: ";
 
         // Intel Hex file format-related constants:
 
-        // record types, that can be used in storing ARM MCU firmware
-        const RECORD_TYPE_DATA = "00";     // Data Record
-        const RECORD_TYPE_EOF = "01";      // End of File Record
-        const RECORD_TYPE_ULBA = "04";     // Extended Linear Address Record
-        const RECORD_TYPE_START = "05";    // Start Linear Address Record
+        // record types, that can be used in storing ARM MCU firmware:
+        // Data Record
+        const DFUSTM32_RECORD_TYPE_DATA = "00";
+        // End of File Record
+        const DFUSTM32_RECORD_TYPE_EOF = "01";
+        // Extended Linear Address Record
+        const DFUSTM32_RECORD_TYPE_ULBA = "04";
+        // Start Linear Address Record
+        const DFUSTM32_RECORD_TYPE_START = "05";
 
-        // - record delimiters
-        const SPACING_CHARS = " \t\r\n";
+        // record delimiters
+        const DFUSTM32_SPACING_CHARS = " \t\r\n";
 
-        const DEFAULT_CHUNK_SIZE = 4096;
+        const DFUSTM32_DEFAULT_CHUNK_SIZE = 4096;
 
         if (chunkSize == null) {
-            _chunkSize = DEFAULT_CHUNK_SIZE;
+            _chunkSize = DFUSTM32_DEFAULT_CHUNK_SIZE;
         } else {
             _chunkSize = chunkSize;
         };
@@ -73,7 +77,7 @@ class IntelHexParser {
             local record = _parseRecord();
 
             switch (record.type) {
-                case RECORD_TYPE_ULBA:
+                case DFUSTM32_RECORD_TYPE_ULBA:
                     // ULBA should precede data
                     server.log(format(
                         "Firmware start address is 0x%04x0000",
@@ -82,7 +86,7 @@ class IntelHexParser {
                     ulba = record.data << 16;
                     break;
 
-                case RECORD_TYPE_DATA:
+                case DFUSTM32_RECORD_TYPE_DATA:
                     // initialize first chunk's offset
                     if (chunkOffset == null) {
                         chunkOffset = record.offset;
@@ -136,7 +140,7 @@ class IntelHexParser {
                     };
                     break;
 
-                case RECORD_TYPE_EOF:
+                case DFUSTM32_RECORD_TYPE_EOF:
                     // flush data
                     if (data.len() > 0) {
                         local chunk = {
@@ -176,7 +180,7 @@ class IntelHexParser {
             } else if (ch >= 'a' && ch <= 'f') {
                 nibble = (ch - 'a' + 10);
             } else {
-                throw PARSE_ERROR_MSG + "hex digit is out of range";
+                throw DFUSTM32_PARSE_ERROR_MSG + "hex digit is out of range";
             };
             hex = (hex << 4) + nibble;
         }
@@ -191,10 +195,12 @@ class IntelHexParser {
         local recordMark = null;
         do {
             recordMark = _fileBlob.readstring(1);
-        } while (SPACING_CHARS.find(recordMark));
+        } while (DFUSTM32_SPACING_CHARS.find(recordMark));
 
         if (recordMark != ":") {
-            throw PARSE_ERROR_MSG + "record mark is invalid: " + recordMark;
+            throw DFUSTM32_PARSE_ERROR_MSG +
+            "record mark is invalid: " +
+            recordMark;
         };
 
         local recordLength = _hexToInt(_fileBlob.readstring(2));
@@ -213,7 +219,7 @@ class IntelHexParser {
         };
 
         switch (recordType) {
-            case RECORD_TYPE_ULBA:
+            case DFUSTM32_RECORD_TYPE_ULBA:
                 // extended linear address record (ULBA)
                 local tempPointer = _fileBlob.tell();
                 _fileBlob.seek(dataPointer);
@@ -221,7 +227,7 @@ class IntelHexParser {
                 _fileBlob.seek(tempPointer);
                 break;
 
-            case RECORD_TYPE_DATA:
+            case DFUSTM32_RECORD_TYPE_DATA:
                 // data record
                 local tempPointer = _fileBlob.tell();
                 _fileBlob.seek(dataPointer);
@@ -254,17 +260,17 @@ class DFUSTM32Agent {
     constructor() {
         // initialize agent
 
-        const EVENT_START_FLASHING = "start-flashing";
-        const EVENT_REQUEST_CHUNK = "request-chunk";
-        const EVENT_RECEIVE_CHUNK = "receive-chunk";
-        const EVENT_DONE_FLASHING = "done-flashing";
+        const DFUSTM32_EVENT_START_FLASHING = "start-flashing";
+        const DFUSTM32_EVENT_REQUEST_CHUNK = "request-chunk";
+        const DFUSTM32_EVENT_RECEIVE_CHUNK = "receive-chunk";
+        const DFUSTM32_EVENT_DONE_FLASHING = "done-flashing";
 
         init();
     };
 
     function init() {
-        device.on(EVENT_REQUEST_CHUNK, _onRequestChunk.bindenv(this));
-        device.on(EVENT_DONE_FLASHING, _onDoneFlashing.bindenv(this));
+        device.on(DFUSTM32_EVENT_REQUEST_CHUNK, _onRequestChunk.bindenv(this));
+        device.on(DFUSTM32_EVENT_DONE_FLASHING, _onDoneFlashing.bindenv(this));
     };
 
     function setBeforeSendImage(beforeSendImage) {
@@ -328,22 +334,22 @@ class DFUSTM32Agent {
         };
 
         // start flashing
-        device.send(EVENT_START_FLASHING, null);
+        device.send(DFUSTM32_EVENT_START_FLASHING, null);
     };
 
     function _onRequestChunk(_) {
-        // EVENT_REQUEST_CHUNK handler
+        // DFUSTM32_EVENT_REQUEST_CHUNK handler
 
         local chunk = resume chunks;
 
         if (_beforeSendChunk != null) {
             _beforeSendChunk(this, chunk);
         };
-        device.send(EVENT_RECEIVE_CHUNK, chunk);
+        device.send(DFUSTM32_EVENT_RECEIVE_CHUNK, chunk);
     };
 
     function _onDoneFlashing(status) {
-        // EVENT_DONE_FLASHING handler
+        // DFUSTM32_EVENT_DONE_FLASHING handler
 
         if (_onDone != null) {
             _onDone(this, status);
