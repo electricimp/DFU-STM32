@@ -62,7 +62,7 @@ At the moment, this library supports:
 
       If you skip the sector map or pass `null` instead, the device will perform a bulk Flash ROM erase. Bulk erasing can take a long time.
 
-      You can also skip the last two parameters (pins), if you intend to use software method of entering/exiting the bootloader. See [customization guide](#customization-guide) on how to do it.
+      You can also skip the last two parameters (pins), if you intend to use software method of entering/exiting the bootloader. See [customization guide](./docs/customization.md) on how to do it.
 
 3. On agent side:
    1. Create a DFU-STM32 object:
@@ -79,7 +79,7 @@ At the moment, this library supports:
    ```
 
 ## Library reference
-You can find a layout of DFU-STM32's classes and their mandatory methods in the [reference](https://github.com/nobitlost/DFU-STM32/blob/develop/docs/reference.md).
+You can find a layout of DFU-STM32's classes and their mandatory methods in the [reference](./docs/reference.md).
 
 ## Example
 The agent part of an example is featuring a simple web service. The endpoint URL is *"https://<span></span>agent.electricimp.com/&lt;Agent ID&gt;/firmware/update"*. It supports two verbs:
@@ -90,5 +90,5 @@ The agent part also has a simple progress indicator. It reports a current progre
 
 The device part of the example is pretty minimal.
 
-## Customization guide
-The library has a modular structure that allows you to adapt it to a wide range of firmware file formats, microcontrollers, and communication ports and protocols.
+## License
+This library is licensed under the [MIT License](./LICENSE.txt).
