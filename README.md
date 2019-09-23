@@ -16,15 +16,10 @@ At the moment, this library supports:
 - firmware in Intel Hex format.
 
 ## Quick start
-1. Include necessary libraries in your project: put 
-   ```
-   #require "DFU-STM32.agent.lib.nut:0.1.0"
-   ```
-   and
-   ```
-   #require "DFU-STM32.device.lib.nut:0.1.0"
-   ```
-   to the top of your agent and device code, respectively.
+
+1. Include code in your project:
+   Copy and paste the `DFU-STM32.agent.lib.nut` file in you agent code, and the `DFU-STM32.device.lib.nut` file in your device code.
+   
 2. On device side:
     1. Create a port instance with an Imp [UART device](https://developer.electricimp.com/api/hardware/uart) as an argument:
     ```
