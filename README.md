@@ -4,8 +4,9 @@
 This library is aimed to facilitate the process of updating the firmware of the certain types of custom peripheral controllers (MCUs), working in tandem with the Imp modules.
 
 There may be various reasons to use external MCUs in Imp-enabled devices. Most probable are:
-- the project requires a high number of peripheral connections, that exceeds the capabilities of an Imp module,
-- an Imp module is used to retrofit the existing device with cloud connectivity, while original (legacy) MCU remains in place, performing its initial tasks.
+- requires hard real time execution (e.g. control loop) which cannot be done in the Imp application model (VM sandbox)
+- the project requires a high number of peripheral connections, that exceeds the capabilities of an Imp module
+- an Imp module is used to retrofit the existing device with security, device management, and cloud connectivity, while original (legacy) MCU remains in place, performing its initial tasks.
 
 At the moment, this library supports:
 - any Imp module or development board with at least one UART lane and two GPIO pins available. The library was extensively tested with [April](https://developer.electricimp.com/hardware/resources/reference-designs/april) board,
